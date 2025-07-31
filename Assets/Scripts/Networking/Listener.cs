@@ -66,6 +66,8 @@ namespace Networking
 		private readonly CancellationTokenSource _cancellation;
 		private readonly Dictionary<int, byte[]> _cachedArrays;
 		private readonly List<ACKInfo> _awaitingACKs;
+		private readonly List<int> _alreadyReceivedACKs;
+		private readonly ConcurrentDictionary<int, int> _receivedACKsToTime;
 		private readonly ConcurrentDictionary<int, ACKInfo> _idToACK;
 		private readonly ConcurrentDictionary<int, ACKData> _storedPackages;
 		private readonly List<IPEndPoint> _connectedUsers;
@@ -74,7 +76,7 @@ namespace Networking
 		private const int IDLE_PROCESSING_DELAY = 10;
 		private const long MAX_ACK_WAITING_TIME = 2000;
 
-		private int _packageID = 2;
+		private int _packageID;
 
 		private Listener(bool isClient, int port)
 		{
@@ -96,6 +98,9 @@ namespace Networking
 			_idToACK = new ConcurrentDictionary<int, ACKInfo>();
 			_connectedUsers = new List<IPEndPoint>();
 
+			_alreadyReceivedACKs = new List<int>();
+			_receivedACKsToTime = new ConcurrentDictionary<int, int>();
+
 			_clientTime.Start();
 
 			if (!isClient)
@@ -104,6 +109,7 @@ namespace Networking
 				_processTask = Task.Run(() => ProcessPackages(_cancellation.Token));
 			}
 
+			_packageID = UnityEngine.Random.Range(int.MinValue, int.MaxValue);
 			_selfEndPoint = (IPEndPoint)_client.Client.LocalEndPoint;
 
 			Debug.Log($"Listener" + (_isClient ? "Client" : "Server") + ": starting client at " + _client.Client.LocalEndPoint);
@@ -299,14 +305,23 @@ namespace Networking
 		{
 			for(int i = 0; i < _awaitingACKs.Count; i++)
 			{
-				Debug.Log(ListenerName + "Processing ACKs" + _awaitingACKs.Count);
-				Debug.Log("processing " + _awaitingACKs[i].ID);
+				//Debug.Log(ListenerName + "Processing ACKs" + _awaitingACKs.Count);
+				//Debug.Log("processing " + _awaitingACKs[i].ID);
 				var ACK = _awaitingACKs[i];
 				long difference = Time - ACK.StartTime;
 
 				if(difference > MAX_ACK_WAITING_TIME)
 				{
-					var info = _storedPackages[ACK.ID];
+					if(!_storedPackages.TryGetValue(ACK.ID, out var info))
+					{
+						Debug.LogError($"ACKS list contains unknown id... removing");
+						_storedPackages.TryRemove(ACK.ID, out _);
+						_idToACK.TryRemove(ACK.ID, out _);
+						_awaitingACKs.Remove(ACK);
+						i = Math.Max(i - 1, 0);
+
+						continue;
+					}
 					int tries = info.Tries;
 
 					if(tries == 5)
@@ -689,6 +704,7 @@ namespace Networking
 		public IReadOnlyList<IPEndPoint> Connected => _connectedUsers;
 		private string ListenerName => $"Listener" + (_isClient ? "Client" : "Server");
 		public int CurrentPackageID => _packageID++;
+		public IPEndPoint ServerEndPoint => new IPEndPoint(_serverAdress, _serverPort);
 		public long Time => _clientTime.ElapsedMilliseconds;
 		public IPEndPoint SelfEndPoint => _selfEndPoint;
 		public event Action<Type> RemoveCallback;
