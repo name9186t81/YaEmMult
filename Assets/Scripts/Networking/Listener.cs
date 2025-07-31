@@ -13,6 +13,8 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 
+using static UnityEngine.Rendering.ReloadAttribute;
+
 using Debug = UnityEngine.Debug;
 
 namespace Networking
@@ -83,7 +85,7 @@ namespace Networking
 			}
 			else
 			{
-				_client = new UdpClient(new IPEndPoint(IPAddress.Loopback, port));
+				_client = new UdpClient(port);
 			}
 			_clientTime = new Stopwatch();
 			_receivedPackagesQueue = new ConcurrentQueue<UdpReceiveResult>();
@@ -587,13 +589,13 @@ namespace Networking
 			end = data.Length;
 			if ((flags & PackageFlags.Reliable) != 0)
 			{
-				int check = NetworkUtils.Adler32(ref data, 0, data.Length - sizeof(int));
-				return check == BitConverter.ToInt32(data, data.Length - sizeof(int));
+				int check = NetworkUtils.Adler32(ref data, 0, data.Length - sizeof(int) - ((flags & PackageFlags.NeedACK) != 0 ? sizeof(int) : 0));
+				return check == BitConverter.ToInt32(data, data.Length - sizeof(int) - ((flags & PackageFlags.NeedACK) != 0 ? sizeof(int) : 0));
 			}
 			else if ((flags & PackageFlags.VeryReliable) != 0)
 			{
-				uint check = NetworkUtils.CRC32(ref data, 0, data.Length - sizeof(int));
-				return check == BitConverter.ToUInt32(data, data.Length - sizeof(int));
+				uint check = NetworkUtils.CRC32(ref data, 0, data.Length - sizeof(int) - ((flags & PackageFlags.NeedACK) != 0 ? sizeof(int) : 0));
+				return check == BitConverter.ToUInt32(data, data.Length - sizeof(int) - ((flags & PackageFlags.NeedACK) != 0 ? sizeof(int) : 0));
 			}
 			Debug.Log(data.Length + " " + newData.Length);
 			return true;

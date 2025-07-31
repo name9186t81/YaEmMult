@@ -1545,8 +1545,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _serverIP: {fileID: 678477606}
   _serverPort: {fileID: 16786676}
-  _confirmButton: {fileID: 1796670913}
-  _connectButton: {fileID: 509912826}
+  _confirmButton: {fileID: 509912826}
+  _connectButton: {fileID: 1796670913}
 --- !u!1 &685713867
 GameObject:
   m_ObjectHideFlags: 0
