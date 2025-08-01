@@ -33,6 +33,19 @@ namespace Networking
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static void AddVector2ToBuffer(this Vector2 vector, byte[] buffer, int offset)
+		{
+			BitConverter.SingleToInt32Bits(vector.x).Convert(ref buffer, offset);
+			BitConverter.SingleToInt32Bits(vector.y).Convert(ref buffer, offset + sizeof(float));
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static Vector2 GetVector2FromBuffer(byte[] buffer, int offset)
+		{
+			return new Vector2(BitConverter.ToSingle(buffer, offset), BitConverter.ToSingle(buffer, offset + sizeof(float)));
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static void Quantitize(float value, float scaleFactor, out byte res)
 		{
 			res = (byte)(value * scaleFactor);

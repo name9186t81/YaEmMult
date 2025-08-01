@@ -15,6 +15,7 @@
 		ServerShutdown,
 		TimeSync,
 		ActorSync,
+		ActorSyncFromServer,
 		Ack,
 		ClientIDRequest,
 		ClientIDResponse,

@@ -83,7 +83,7 @@ namespace Networking
 
 		private int _packageID;
 		private byte _userID;
-		private byte _ownID;
+		private byte _ownID = 255;
 
 		private Listener(bool isClient, int port)
 		{
@@ -702,6 +702,28 @@ namespace Networking
 				}
 			}
 		}
+
+		public async Task SendPackageToEveryone(IPackage package)
+		{
+			for (int i = 0; i < _connectedUsers.Count; i++)
+			{
+				await SendPackage(package, _connectedUsers[i]);
+			}
+		}
+		public async Task SendPackageToEveryoneExceptSender(IPackage package, IPEndPoint sender)
+		{
+			int n = 0;
+			for (; n < _connectedUsers.Count && _connectedUsers[n] != sender; n++)
+			{
+				await SendPackage(package, _connectedUsers[n]);
+			}
+
+			for(int i = n + 1;  i < _connectedUsers.Count; i++)
+			{
+				await SendPackage(package, _connectedUsers[i]);
+			}
+		}
+
 
 		public async Task SendPackage(IPackage package, IPEndPoint point)
 		{
