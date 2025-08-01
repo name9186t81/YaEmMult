@@ -73,6 +73,8 @@ namespace Networking
 		private readonly ConcurrentDictionary<int, ACKInfo> _idToACK;
 		private readonly ConcurrentDictionary<int, ACKData> _storedPackages;
 		private readonly List<IPEndPoint> _connectedUsers;
+		private readonly ConcurrentDictionary<IPEndPoint, byte> _userToID;
+		private readonly ConcurrentDictionary<byte, IPEndPoint> _idToUser;
 		private readonly static ConcurrentDictionary<PackageType, PackageFlags> _typeToFlags;
 		private static readonly ConcurrentDictionary<PackageType, IPackageProcessor> _processors;
 		private const int IDLE_PROCESSING_DELAY = 10;
@@ -80,6 +82,8 @@ namespace Networking
 		private const int MAX_PACKAGE_SEND_TRIES = 5;
 
 		private int _packageID;
+		private byte _userID;
+		private byte _ownID;
 
 		private Listener(bool isClient, int port)
 		{
@@ -100,6 +104,9 @@ namespace Networking
 			_storedPackages = new ConcurrentDictionary<int, ACKData>();
 			_idToACK = new ConcurrentDictionary<int, ACKInfo>();
 			_connectedUsers = new List<IPEndPoint>();
+
+			_userToID = new ConcurrentDictionary<IPEndPoint, byte>();
+			_idToUser = new ConcurrentDictionary<byte, IPEndPoint>();
 
 			_alreadySentACKs = new List<int>();
 			_sentACKsToTime = new ConcurrentDictionary<int, long>();
@@ -442,6 +449,8 @@ namespace Networking
 						NetworkUtils.PackageTypeToByteArray(PackageType.Ping, ref bytes);
 						//await _client.SendAsync(bytes, bytes.Length, new IPEndPoint(_serverAdress, _serverPort));
 
+						var idRequest = new RequestClientIDPackage();
+						await SendPackage(idRequest, new IPEndPoint(adress, port));
 						return true;
 					}
 					case ConnectionResponseType.Dropped: { Debug.Log($"CLIENT: Connection from {adress}:{port} dropped by server!"); return false; }
@@ -738,9 +747,35 @@ namespace Networking
 			_connectedUsers.Add(endPoint);
 		}
 
+		public bool TryGetUserID(IPEndPoint point, out byte id)
+		{
+			return _userToID.TryGetValue(point, out id);
+		}
+
+		public bool TryGetUserByID(byte id, out IPEndPoint user)
+		{
+			return _idToUser.TryGetValue(id, out user);
+		}
+
+		public void RegisterUser(IPEndPoint point, byte id)
+		{
+			if (!TryGetUserID(point, out _))
+			{
+				_userToID.AddOrUpdate(point, id, (sPoint, sID) => _userToID[sPoint] =  id);
+				_idToUser.AddOrUpdate(id, point, (sID, sPoint)  => _idToUser[sID] = sPoint);
+			}
+		}
+
+		public void AssignID(byte id)
+		{
+			_ownID = id;
+		}
+
 		public IReadOnlyList<IPEndPoint> Connected => _connectedUsers;
 		private string ListenerName => $"Listener" + (_isClient ? "Client" : "Server");
 		public int CurrentPackageID => _packageID++;
+		public byte NextUserID => _userID++;
+		public byte OwnID => _ownID;
 		public IPEndPoint ServerEndPoint => new IPEndPoint(_serverAdress, _serverPort);
 		public long Time => _clientTime.ElapsedMilliseconds;
 		public IPEndPoint SelfEndPoint => _selfEndPoint;

@@ -16,5 +16,7 @@
 		TimeSync,
 		ActorSync,
 		Ack,
+		ClientIDRequest,
+		ClientIDResponse,
 	}
 }
