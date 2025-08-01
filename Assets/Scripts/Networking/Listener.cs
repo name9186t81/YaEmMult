@@ -13,6 +13,8 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 
+using UnityEditor.PackageManager.UI;
+
 using static UnityEngine.Rendering.ReloadAttribute;
 
 using Debug = UnityEngine.Debug;
@@ -66,8 +68,8 @@ namespace Networking
 		private readonly CancellationTokenSource _cancellation;
 		private readonly Dictionary<int, byte[]> _cachedArrays;
 		private readonly List<ACKInfo> _awaitingACKs;
-		private readonly List<int> _alreadyReceivedACKs;
-		private readonly ConcurrentDictionary<int, int> _receivedACKsToTime;
+		private readonly List<int> _alreadySentACKs;
+		private readonly ConcurrentDictionary<int, long> _sentACKsToTime;
 		private readonly ConcurrentDictionary<int, ACKInfo> _idToACK;
 		private readonly ConcurrentDictionary<int, ACKData> _storedPackages;
 		private readonly List<IPEndPoint> _connectedUsers;
@@ -75,6 +77,7 @@ namespace Networking
 		private static readonly ConcurrentDictionary<PackageType, IPackageProcessor> _processors;
 		private const int IDLE_PROCESSING_DELAY = 10;
 		private const long MAX_ACK_WAITING_TIME = 2000;
+		private const int MAX_PACKAGE_SEND_TRIES = 5;
 
 		private int _packageID;
 
@@ -98,8 +101,8 @@ namespace Networking
 			_idToACK = new ConcurrentDictionary<int, ACKInfo>();
 			_connectedUsers = new List<IPEndPoint>();
 
-			_alreadyReceivedACKs = new List<int>();
-			_receivedACKsToTime = new ConcurrentDictionary<int, int>();
+			_alreadySentACKs = new List<int>();
+			_sentACKsToTime = new ConcurrentDictionary<int, long>();
 
 			_clientTime.Start();
 
@@ -242,6 +245,17 @@ namespace Networking
 						var flags = _typeToFlags[type];
 						bool needACK = (flags & PackageFlags.NeedACK) != 0;
 
+						if(needACK)
+						{
+							int id = GetACKID(buffer);
+							if (_alreadySentACKs.Contains(id))
+							{
+								await SendACK(ACKPackage.ACKResult.Success, buffer, result.RemoteEndPoint);
+								_sentACKsToTime[id] = Time;
+								continue;
+							}
+						}
+
 						if (GetRawDataInternal(buffer, flags, out var data, out _))
 						{
 							var res = await processor.Process(data, _cancellation, result.RemoteEndPoint, this);
@@ -250,7 +264,9 @@ namespace Networking
 							{
 								if (needACK)
 								{
-									await SendACK(ACKPackage.ACKResult.Success, buffer, result.RemoteEndPoint);
+									int id = await SendACK(ACKPackage.ACKResult.Success, buffer, result.RemoteEndPoint);
+									_alreadySentACKs.Add(id);
+									_sentACKsToTime.AddOrUpdate(id, Time, (newID, newTime) => _sentACKsToTime[newID] = newTime);
 								}
 							}
 							else
@@ -293,12 +309,18 @@ namespace Networking
 			}
 		}
 
-		private async Task SendACK(ACKPackage.ACKResult result, byte[] buffer, IPEndPoint sender)
+		private async Task<int> SendACK(ACKPackage.ACKResult result, byte[] buffer, IPEndPoint sender)
 		{
-			int id = BitConverter.ToInt32(buffer, buffer.Length - sizeof(int));
+			int id = GetACKID(buffer);
 
 			var package = new ACKPackage(result, id);
 			await SendPackage(package, sender);
+			return id;
+		}
+
+		private int GetACKID(byte[] buffer)
+		{
+			return BitConverter.ToInt32(buffer, buffer.Length - sizeof(int));
 		}
 
 		private async Task ProcessAwaitingACKs()
@@ -314,7 +336,7 @@ namespace Networking
 				{
 					if(!_storedPackages.TryGetValue(ACK.ID, out var info))
 					{
-						Debug.LogError($"ACKS list contains unknown id... removing");
+						Debug.LogError(ListenerName + $": ACKS list contains unknown id... removing");
 						_storedPackages.TryRemove(ACK.ID, out _);
 						_idToACK.TryRemove(ACK.ID, out _);
 						_awaitingACKs.Remove(ACK);
@@ -324,7 +346,7 @@ namespace Networking
 					}
 					int tries = info.Tries;
 
-					if(tries == 5)
+					if(tries == MAX_PACKAGE_SEND_TRIES)
 					{
 						Debug.LogError($"Listener" + (_isClient ? "Client" : "Server") + ": failed to received ACK after 5 tries");
 
@@ -340,6 +362,21 @@ namespace Networking
 					_awaitingACKs[i] = new(ACK.ID, Time);
 					Debug.LogWarning(ListenerName + ": sending package again");
 					await SendAsync(info.Data, info.EndPoint);
+				}
+			}
+
+			for (int i = 0; i < _alreadySentACKs.Count; i++)
+			{
+				int id = _alreadySentACKs[i];
+
+				long difference = Time - _sentACKsToTime[id];
+
+				if(difference > MAX_ACK_WAITING_TIME * MAX_PACKAGE_SEND_TRIES)
+				{
+					_alreadySentACKs.Remove(id);
+					_sentACKsToTime.TryRemove(id, out _);
+
+					i = Math.Max(i - 1, 0);
 				}
 			}
 		}

@@ -38,7 +38,7 @@ namespace UI
 				_serverPort.text = "Баран число пиши";
 				return;
 			}
-
+	
 			var data = new ConnectionData(adress, port);
 			NetworkingInfoContainer.Instance.UpdateConnectionData(ref data);
 			Listener.Create(port, true);
