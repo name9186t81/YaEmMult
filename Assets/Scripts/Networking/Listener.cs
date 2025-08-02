@@ -13,10 +13,6 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 
-using UnityEditor.PackageManager.UI;
-
-using static UnityEngine.Rendering.ReloadAttribute;
-
 using Debug = UnityEngine.Debug;
 
 namespace Networking
@@ -63,6 +59,7 @@ namespace Networking
 		private Task _processTask;
 		private Task _pingTask;
 		private readonly bool _isClient;
+		private readonly ServerUpdater _updater;
 
 		private readonly ConcurrentQueue<UdpReceiveResult> _receivedPackagesQueue;
 		private readonly CancellationTokenSource _cancellation;
@@ -77,9 +74,14 @@ namespace Networking
 		private readonly ConcurrentDictionary<byte, IPEndPoint> _idToUser;
 		private readonly static ConcurrentDictionary<PackageType, PackageFlags> _typeToFlags;
 		private static readonly ConcurrentDictionary<PackageType, IPackageProcessor> _processors;
+		private static readonly ConcurrentBag<ITickBasedPackageProcessor> _tickBasedPackageProcessors;
 		private const int IDLE_PROCESSING_DELAY = 10;
 		private const long MAX_ACK_WAITING_TIME = 2000;
 		private const int MAX_PACKAGE_SEND_TRIES = 5;
+		private const int TICK_RATE = 20;
+
+		public const int MAX_PACKAGE_SIZE = 500;
+		public event Action OnTick;
 
 		private int _packageID;
 		private byte _userID;
@@ -95,6 +97,10 @@ namespace Networking
 			else
 			{
 				_client = new UdpClient(port);
+				_updater = ServerUpdater.Create();
+				_updater.SetTickRate(TICK_RATE);
+
+				_updater.OnTick += Ticked;
 			}
 			_clientTime = new Stopwatch();
 			_receivedPackagesQueue = new ConcurrentQueue<UdpReceiveResult>();
@@ -117,6 +123,8 @@ namespace Networking
 			{
 				_listenTask = Task.Run(() => Listen(_cancellation.Token));
 				_processTask = Task.Run(() => ProcessPackages(_cancellation.Token));
+
+
 			}
 
 			_packageID = UnityEngine.Random.Range(int.MinValue, int.MaxValue);
@@ -125,11 +133,33 @@ namespace Networking
 			Debug.Log($"Listener" + (_isClient ? "Client" : "Server") + ": starting client at " + _client.Client.LocalEndPoint);
 		}
 
+		private async void Ticked()
+		{
+			OnTick?.Invoke();
+
+			Debug.Log("SERVER TICK" + _tickBasedPackageProcessors.Count);
+			foreach(var proc in _tickBasedPackageProcessors)
+			{
+				if (proc.NeedTick)
+				{
+					try
+					{
+						await proc.Tick(1f / TICK_RATE, this);
+					}
+					catch (Exception ex)
+					{
+						Debug.LogError(ListenerName + ": ERROR WHILE TICKING - " + proc.GetType().Name + " er: " + ex.Message);
+					}
+				}
+			}
+		}
+
 		static Listener()
 		{
 			int size = Enum.GetValues(typeof(PackageType)).Length;
 			ConcurrentDictionary<PackageType, IPackageProcessor> processors = new ConcurrentDictionary<PackageType, IPackageProcessor>();
 			_typeToFlags = new ConcurrentDictionary<PackageType, PackageFlags>();
+			_tickBasedPackageProcessors = new ConcurrentBag<ITickBasedPackageProcessor>();
 
 			var types = Assembly.GetExecutingAssembly().GetTypes().Where(t => typeof(IPackageProcessor).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract);
 			var packages = Assembly.GetExecutingAssembly().GetTypes().Where(t => typeof(IPackage).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract);
@@ -139,6 +169,11 @@ namespace Networking
 				var prod = Activator.CreateInstance(type);
 				if (prod != null && prod is IPackageProcessor proc)
 				{
+					if(proc is ITickBasedPackageProcessor tickBased)
+					{
+						_tickBasedPackageProcessors.Add(tickBased);
+					}
+
 					var attribute = type.GetCustomAttribute<ProcessorAttribute>();
 					if (attribute != null)
 					{
@@ -198,11 +233,11 @@ namespace Networking
 					Debug.Log($"Listener" + (_isClient ? "Client" : "Server") + $": received package {NetworkUtils.GetPackageType(result.Buffer)} size {result.Buffer.Length} bytes");
 				}
 			}
-			catch(SocketException ex)
+			catch (SocketException ex)
 			{
 				Debug.LogError($"Listener" + (_isClient ? "Client" : "Server") + ": CRITICAL ERROR WHILE LISTENING: " + ex.Message);
 			}
-			catch(ObjectDisposedException ex2)
+			catch (ObjectDisposedException ex2)
 			{
 				Debug.LogWarning($"Listener" + (_isClient ? "Client" : "Server") + ": SOCKET CLOSED");
 			}
@@ -212,18 +247,25 @@ namespace Networking
 		{
 			while (!cancellationToken.IsCancellationRequested)
 			{
-				if(_receivedPackagesQueue.TryDequeue(out var result))
+				if(_receivedPackagesQueue.Count > 50)
 				{
+					Debug.LogError(ListenerName + " EMERGENCY PACKAGES RESET");
+					_receivedPackagesQueue.Clear();
+				}
+
+				while (_receivedPackagesQueue.TryDequeue(out var result))
+				{
+					Debug.LogWarning(ListenerName + " pending packages: " + _receivedPackagesQueue.Count);
 					var buffer = result.Buffer;
 					var type = NetworkUtils.GetPackageType(buffer);
 					Debug.Log($"Listener" + (_isClient ? "Client" : "Server") + ": processing package - " + type);
 
-					if(type == PackageType.Ack)
+					if (type == PackageType.Ack)
 					{
 						int size = buffer.Length;
 						ACKPackage sample = new ACKPackage();
 
-						if(size != sample.GetRealPackageSize()) 
+						if (size != sample.GetRealPackageSize())
 						{
 							Debug.LogError($"Listener" + (_isClient ? "Client" : "Server") + ": received wrong ACK package size");
 							continue;
@@ -231,7 +273,7 @@ namespace Networking
 
 						sample.Deserialize(ref buffer, NetworkUtils.PackageHeaderSize);
 
-						if(_idToACK.TryGetValue(sample.ID, out var ack))
+						if (_idToACK.TryGetValue(sample.ID, out var ack))
 						{
 							Debug.Log(ListenerName + $": ack{sample.ID} received");
 							_awaitingACKs.Remove(ack);
@@ -252,7 +294,7 @@ namespace Networking
 						var flags = _typeToFlags[type];
 						bool needACK = (flags & PackageFlags.NeedACK) != 0;
 
-						if(needACK)
+						if (needACK)
 						{
 							int id = GetACKID(buffer);
 							if (_alreadySentACKs.Contains(id))
@@ -265,7 +307,15 @@ namespace Networking
 
 						if (GetRawDataInternal(buffer, flags, out var data, out _))
 						{
-							var res = await processor.Process(data, _cancellation, result.RemoteEndPoint, this);
+							bool res = false;
+							try
+							{
+								res = await processor.Process(data, _cancellation, result.RemoteEndPoint, this);
+							}
+							catch (Exception ex)
+							{
+								Debug.LogError(ListenerName + ": Error while processing package - " + ex.Message);
+							}
 
 							if (res)
 							{
@@ -301,18 +351,16 @@ namespace Networking
 						Debug.LogError("LISTENER: CANNOT PROCESS PACKAGE WITH A TYPE " + type);
 					}
 				}
-				else
+
+				try
 				{
-					try
-					{
-						await ProcessAwaitingACKs();
-					}
-					catch (Exception ex)
-					{
-						Debug.LogError(ListenerName + ": ERROR WHILE PROCESSING ACKS - " + ex.Message);
-					}
-					await Task.Delay(IDLE_PROCESSING_DELAY);
+					await ProcessAwaitingACKs();
 				}
+				catch (Exception ex)
+				{
+					Debug.LogError(ListenerName + ": ERROR WHILE PROCESSING ACKS - " + ex.Message);
+				}
+				await Task.Delay(IDLE_PROCESSING_DELAY);
 			}
 		}
 
@@ -332,16 +380,16 @@ namespace Networking
 
 		private async Task ProcessAwaitingACKs()
 		{
-			for(int i = 0; i < _awaitingACKs.Count; i++)
+			for (int i = 0; i < _awaitingACKs.Count; i++)
 			{
 				//Debug.Log(ListenerName + "Processing ACKs" + _awaitingACKs.Count);
 				//Debug.Log("processing " + _awaitingACKs[i].ID);
 				var ACK = _awaitingACKs[i];
 				long difference = Time - ACK.StartTime;
 
-				if(difference > MAX_ACK_WAITING_TIME)
+				if (difference > MAX_ACK_WAITING_TIME)
 				{
-					if(!_storedPackages.TryGetValue(ACK.ID, out var info))
+					if (!_storedPackages.TryGetValue(ACK.ID, out var info))
 					{
 						Debug.LogError(ListenerName + $": ACKS list contains unknown id... removing");
 						_storedPackages.TryRemove(ACK.ID, out _);
@@ -353,7 +401,7 @@ namespace Networking
 					}
 					int tries = info.Tries;
 
-					if(tries == MAX_PACKAGE_SEND_TRIES)
+					if (tries == MAX_PACKAGE_SEND_TRIES)
 					{
 						Debug.LogError($"Listener" + (_isClient ? "Client" : "Server") + ": failed to received ACK after 5 tries");
 
@@ -378,7 +426,7 @@ namespace Networking
 
 				long difference = Time - _sentACKsToTime[id];
 
-				if(difference > MAX_ACK_WAITING_TIME * MAX_PACKAGE_SEND_TRIES)
+				if (difference > MAX_ACK_WAITING_TIME * MAX_PACKAGE_SEND_TRIES)
 				{
 					_alreadySentACKs.Remove(id);
 					_sentACKsToTime.TryRemove(id, out _);
@@ -405,7 +453,7 @@ namespace Networking
 				receiveTimeout[1] = receiveTask;
 
 				var result = await Task.WhenAny(receiveTimeout);
-				if(result == receiveTimeout[0])
+				if (result == receiveTimeout[0])
 				{
 					Debug.LogError($"CLIENT: Connection timeout occured");
 					continue;
@@ -552,7 +600,7 @@ namespace Networking
 			{
 				if (isClient)
 				{
-					if(combiner.Client != null)
+					if (combiner.Client != null)
 					{
 						combiner.Client._client = new UdpClient();
 					}
@@ -583,7 +631,7 @@ namespace Networking
 
 		private void Dispose(bool disposing)
 		{
-			if(_disposed) return;
+			if (_disposed) return;
 
 			if (disposing)
 			{
@@ -670,11 +718,11 @@ namespace Networking
 			package.Serialize(ref serialized, NetworkUtils.PackageHeaderSize);
 			NetworkUtils.PackageTypeToByteArray(package.Type, ref serialized);
 
-			if((package.Flags & PackageFlags.Reliable) != 0)
+			if ((package.Flags & PackageFlags.Reliable) != 0)
 			{
 				NetworkUtils.Adler32(ref serialized, 0, serialized.Length - sizeof(int)).Convert(ref serialized, serialized.Length - sizeof(int));
 			}
-			else if((package.Flags& PackageFlags.VeryReliable) != 0)
+			else if ((package.Flags & PackageFlags.VeryReliable) != 0)
 			{
 				NetworkUtils.CRC32(ref serialized, 0, serialized.Length - sizeof(int)).Convert(ref serialized, serialized.Length - sizeof(int));
 			}
@@ -690,7 +738,7 @@ namespace Networking
 					serialized = stream.ToArray();
 				}
 			}
-			else if(package.NeedHighCompress)
+			else if (package.NeedHighCompress)
 			{
 				using (MemoryStream stream = new MemoryStream(serialized))
 				{
@@ -710,20 +758,19 @@ namespace Networking
 				await SendPackage(package, _connectedUsers[i]);
 			}
 		}
+
 		public async Task SendPackageToEveryoneExceptSender(IPackage package, IPEndPoint sender)
 		{
-			int n = 0;
-			for (; n < _connectedUsers.Count && _connectedUsers[n] != sender; n++)
+			List<Task> tasks = new List<Task>();
+
+			foreach (var task in _connectedUsers)
 			{
-				await SendPackage(package, _connectedUsers[n]);
+				if (task == sender) continue;
+				tasks.Add(SendPackage(package, task));
 			}
 
-			for(int i = n + 1;  i < _connectedUsers.Count; i++)
-			{
-				await SendPackage(package, _connectedUsers[i]);
-			}
+			await Task.WhenAll(tasks);
 		}
-
 
 		public async Task SendPackage(IPackage package, IPEndPoint point)
 		{
@@ -748,17 +795,26 @@ namespace Networking
 					bytes = newArray;
 				}
 
-				Debug.LogWarning(ListenerName + ": sending package " + package.Type.ToString() + " to the " + point.Address);
+				Debug.LogWarning(ListenerName + ": sending package " + package.Type.ToString() + " to the " + point.ToString());
 				await SendAsync(bytes, point);
 			}
 			catch (Exception e)
 			{
-				Debug.LogError(ListenerName + $": ERROR WHEN SENDING PACKAGE to the {point.Address} - " + e.Message);
+				Debug.LogError(ListenerName + $": ERROR WHEN SENDING PACKAGE to the {point.ToString()} - " + e.Message);
 				Debug.LogError(package);
 			}
 		}
 
-		public async Task SendAsync(byte[] buffer) => await SendAsync(buffer, new IPEndPoint(_serverAdress, _serverPort));
+		public async Task SendDataToEveryone(byte[] data)
+		{
+			List<Task> tasks = new List<Task>();
+			foreach(var connected in _connectedUsers)
+			{
+				tasks.Add(SendAsync(data, connected));
+			}
+			await Task.WhenAll(tasks);
+		}
+
 		public async Task SendAsync(byte[] buffer, IPEndPoint endPoint)
 		{
 			await _client.SendAsync(buffer, buffer.Length, endPoint);
@@ -783,11 +839,10 @@ namespace Networking
 		{
 			if (!TryGetUserID(point, out _))
 			{
-				_userToID.AddOrUpdate(point, id, (sPoint, sID) => _userToID[sPoint] =  id);
-				_idToUser.AddOrUpdate(id, point, (sID, sPoint)  => _idToUser[sID] = sPoint);
+				_userToID.AddOrUpdate(point, id, (sPoint, sID) => _userToID[sPoint] = id);
+				_idToUser.AddOrUpdate(id, point, (sID, sPoint) => _idToUser[sID] = sPoint);
 			}
 		}
-
 		public void AssignID(byte id)
 		{
 			_ownID = id;

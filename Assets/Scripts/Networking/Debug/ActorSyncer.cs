@@ -6,7 +6,7 @@ namespace Networking
 {
 	public sealed class ActorSyncer : MonoBehaviour
 	{
-		[SerializeField, Range(20, 120)] private int _rate;
+		[SerializeField, Range(10, 20)] private int _rate;
 		private float _elapsed;
 
 		private void Update()

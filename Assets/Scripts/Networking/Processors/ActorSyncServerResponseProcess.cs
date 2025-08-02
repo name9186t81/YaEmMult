@@ -9,10 +9,17 @@ namespace Networking
 	{
 		public Task<bool> Process(byte[] data, CancellationTokenSource cts, IPEndPoint sender, Listener receiver)
 		{
-			var package = new ActorSyncFromServerPackage();
-			package.Deserialize(ref data, NetworkUtils.PackageHeaderSize);
+			int usedData = NetworkUtils.PackageHeaderSize;
 
-			DebugGlobalActorSyncer.Instance.ReceivePackage(package);
+			while (usedData < data.Length)
+			{
+				var package = new ActorSyncFromServerPackage();
+				package.Deserialize(ref data, usedData);
+
+				DebugGlobalActorSyncer.Instance.ReceivePackage(package);
+				usedData += package.Size;
+			}
+
 			return Task.FromResult(true);
 		}
 	}

@@ -4,14 +4,14 @@ using UnityEngine;
 
 namespace Networking
 {
-	[Package(PackageFlags.CompressHigh, PackageType.ActorSyncFromServer)]
+	[Package(PackageFlags.None, PackageType.ActorSyncFromServer)]
 	public struct ActorSyncFromServerPackage : IPackage
 	{
-		public readonly PackageFlags Flags => PackageFlags.CompressHigh;
+		public readonly PackageFlags Flags => PackageFlags.None;
 
 		public readonly PackageType Type => PackageType.ActorSyncFromServer;
 
-		public readonly int Size => sizeof(float) * 3;
+		public readonly int Size => sizeof(float) * 3 + sizeof(byte);
 
 		public Vector2 Position;
 		public float Rotation;

@@ -4,10 +4,10 @@ using UnityEngine;
 
 namespace Networking
 {
-	[Package(PackageFlags.CompressHigh, PackageType.ActorSync)]
+	[Package(PackageFlags.None, PackageType.ActorSync)]
 	public struct ActorSyncPackage : IPackage
 	{
-		public readonly PackageFlags Flags => PackageFlags.CompressHigh;
+		public readonly PackageFlags Flags => PackageFlags.None;
 
 		public readonly PackageType Type => PackageType.ActorSync;
 
