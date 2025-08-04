@@ -2,6 +2,8 @@
 using System.Threading;
 using System.Threading.Tasks;
 
+using UnityEngine;
+
 namespace Networking
 {
 	[Processor(PackageType.ActorSyncFromServer, ProcessorAttribute.ProcessorType.Client)]
@@ -17,6 +19,7 @@ namespace Networking
 				package.Deserialize(ref data, usedData);
 
 				DebugGlobalActorSyncer.Instance.ReceivePackage(package);
+				Debug.Log("READ SYNC");
 				usedData += package.Size;
 			}
 

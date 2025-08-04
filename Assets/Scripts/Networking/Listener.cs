@@ -13,6 +13,8 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 
+using static UnityEditor.Progress;
+
 using Debug = UnityEngine.Debug;
 
 namespace Networking
@@ -75,16 +77,18 @@ namespace Networking
 		private readonly static ConcurrentDictionary<PackageType, PackageFlags> _typeToFlags;
 		private static readonly ConcurrentDictionary<PackageType, IPackageProcessor> _processors;
 		private static readonly ConcurrentBag<ITickBasedPackageProcessor> _tickBasedPackageProcessors;
-		private const int IDLE_PROCESSING_DELAY = 10;
+		private const int IDLE_PROCESSING_DELAY = 1;
 		private const long MAX_ACK_WAITING_TIME = 2000;
 		private const int MAX_PACKAGE_SEND_TRIES = 5;
 		private const int TICK_RATE = 20;
+		private const int MAX_PACKAGES_PER_TICK = 120;
 
 		public const int MAX_PACKAGE_SIZE = 500;
 		public event Action OnTick;
 
 		private int _packageID;
 		private byte _userID;
+		private byte _packages;
 		private byte _ownID = 255;
 
 		private Listener(bool isClient, int port)
@@ -102,6 +106,11 @@ namespace Networking
 
 				_updater.OnTick += Ticked;
 			}
+			_client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveBuffer, 1024 * 1024 * 4);
+			_client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.SendBuffer, 1024 * 1024 * 4);
+			_client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveTimeout, 0);
+			_client.Client.Blocking = false;
+
 			_clientTime = new Stopwatch();
 			_receivedPackagesQueue = new ConcurrentQueue<UdpReceiveResult>();
 			_cancellation = new CancellationTokenSource();
@@ -123,8 +132,6 @@ namespace Networking
 			{
 				_listenTask = Task.Run(() => Listen(_cancellation.Token));
 				_processTask = Task.Run(() => ProcessPackages(_cancellation.Token));
-
-
 			}
 
 			_packageID = UnityEngine.Random.Range(int.MinValue, int.MaxValue);
@@ -136,6 +143,7 @@ namespace Networking
 		private async void Ticked()
 		{
 			OnTick?.Invoke();
+			_packages = 0;
 
 			Debug.Log("SERVER TICK" + _tickBasedPackageProcessors.Count);
 			foreach(var proc in _tickBasedPackageProcessors)
@@ -225,12 +233,29 @@ namespace Networking
 		{
 			try
 			{
+				int batchSize = 16;
+				var tasks = new Task<UdpReceiveResult>[batchSize];
+
+				for (int i = 0; i < batchSize; i++)
+				{
+					tasks[i] = _client.ReceiveAsync();
+				}
+
 				while (!cancellationToken.IsCancellationRequested)
 				{
-					var result = await _client.ReceiveAsync();
-					_receivedPackagesQueue.Enqueue(result);
+					if(_packages++ > MAX_PACKAGES_PER_TICK && !_isClient)
+					{
+						Debug.LogWarning(ListenerName + "EXCEEDED MAX PACKAGES PER TICK AND NO LONGER LISTENING TO ANY INCOMING PACKAGES");
+						continue;
+					}
 
-					Debug.Log($"Listener" + (_isClient ? "Client" : "Server") + $": received package {NetworkUtils.GetPackageType(result.Buffer)} size {result.Buffer.Length} bytes");
+					var completed = await Task.WhenAny(tasks);
+					int index = Array.IndexOf(tasks, completed);
+
+					var result = await completed;
+					_receivedPackagesQueue.Enqueue(result);
+					tasks[index] = _client.ReceiveAsync();
+					Debug.Log($"Listener" + (_isClient ? "Client" : "Server") + $": received package {NetworkUtils.GetPackageType(result.Buffer)} size {result.Buffer.Length} bytes, avaible buffer: " + _client.Client.Available);
 				}
 			}
 			catch (SocketException ex)
@@ -253,12 +278,16 @@ namespace Networking
 					_receivedPackagesQueue.Clear();
 				}
 
+				int processed = 0;
 				while (_receivedPackagesQueue.TryDequeue(out var result))
 				{
+					processed++;
+					if (processed > 50) break;
 					Debug.LogWarning(ListenerName + " pending packages: " + _receivedPackagesQueue.Count);
 					var buffer = result.Buffer;
 					var type = NetworkUtils.GetPackageType(buffer);
-					Debug.Log($"Listener" + (_isClient ? "Client" : "Server") + ": processing package - " + type);
+					Debug.Log($"Listener" + (_isClient ? "Client" : "Server") + ": processing package - " + type + " with a delay " + 
+						(Time - NetworkUtils.GetTmeStamp(buffer)));
 
 					if (type == PackageType.Ack)
 					{
@@ -352,15 +381,18 @@ namespace Networking
 					}
 				}
 
-				try
+				if (processed == 0)
 				{
-					await ProcessAwaitingACKs();
+					try
+					{
+						await ProcessAwaitingACKs();
+					}
+					catch (Exception ex)
+					{
+						Debug.LogError(ListenerName + ": ERROR WHILE PROCESSING ACKS - " + ex.Message);
+					}
+					await Task.Delay(IDLE_PROCESSING_DELAY);
 				}
-				catch (Exception ex)
-				{
-					Debug.LogError(ListenerName + ": ERROR WHILE PROCESSING ACKS - " + ex.Message);
-				}
-				await Task.Delay(IDLE_PROCESSING_DELAY);
 			}
 		}
 
@@ -717,6 +749,7 @@ namespace Networking
 			GetCachedBuffer(package, out serialized);
 			package.Serialize(ref serialized, NetworkUtils.PackageHeaderSize);
 			NetworkUtils.PackageTypeToByteArray(package.Type, ref serialized);
+			Time.Convert(ref serialized, sizeof(PackageType));
 
 			if ((package.Flags & PackageFlags.Reliable) != 0)
 			{
@@ -817,6 +850,7 @@ namespace Networking
 
 		public async Task SendAsync(byte[] buffer, IPEndPoint endPoint)
 		{
+			Time.Convert(ref buffer, sizeof(PackageType));
 			await _client.SendAsync(buffer, buffer.Length, endPoint);
 		}
 

@@ -26,7 +26,8 @@ namespace Networking
 
 				if (_latestPositions.TryGetValue(sender, out var latestPosition))
 				{
-					_latestPositions[sender] = receivedPackage;
+					if(latestPosition.Tick < receivedPackage.Tick)
+						_latestPositions[sender] = receivedPackage;
 				}
 				else
 				{

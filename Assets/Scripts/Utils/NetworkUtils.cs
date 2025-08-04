@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
@@ -23,6 +24,10 @@ namespace Networking
 			_CRC32Table = CreateCRC32Table();
 		}
 
+		public static long GetTmeStamp(byte[] buffer)
+		{
+			return BitConverter.ToInt64(buffer, sizeof(PackageType));
+		}
 		/// <summary>
 		/// Shortcut for creating UDP packages.
 		/// </summary>
@@ -160,7 +165,7 @@ namespace Networking
 		/// <param name="data"></param>
 		public static void PackageTypeToByteArray(PackageType type, ref byte[] data)
 		{
-			byte[] buffer = new byte[PackageHeaderSize];
+			byte[] buffer = new byte[sizeof(PackageType)];
 			try
 			{
 				var ttype = Enum.GetUnderlyingType(typeof(PackageType));
@@ -187,7 +192,7 @@ namespace Networking
 				Debug.LogError($"SERVER UTILS: Cannot convert package to byte array {ex.Message}");
 			}
 
-			Array.Copy(buffer, data, PackageHeaderSize);
+			Array.Copy(buffer, data, sizeof(PackageType));
 		}
 
 		/// <summary>
@@ -281,13 +286,13 @@ namespace Networking
 		/// <returns></returns>
 		public static PackageType GetPackageType(ref byte[] data)
 		{
-			if(data.Length < PackageHeaderSize)
+			if(data.Length < sizeof(PackageType))
 			{
 				return PackageType.Invalid;
 			}
 
-			byte[] array = new byte[PackageHeaderSize];
-			Array.Copy(data, array, PackageHeaderSize);
+			byte[] array = new byte[sizeof(PackageType)];
+			Array.Copy(data, array, sizeof(PackageType));
 
 			try
 			{
@@ -297,6 +302,47 @@ namespace Networking
 				if (type == typeof(byte))
 				{
 					enumObj = array[0];
+				}
+				else if (type == typeof(short))
+				{
+					enumObj = BitConverter.ToInt16(data);
+				}
+				else if (type == typeof(int))
+				{
+					enumObj = BitConverter.ToInt32(data);
+				}
+				else if (type == typeof(long))
+				{
+					enumObj = BitConverter.ToInt64(data);
+				}
+				else
+				{
+					return PackageType.Invalid;
+				}
+
+				return (PackageType)Enum.ToObject(typeof(PackageType), enumObj);
+			}
+			catch (Exception ex)
+			{
+				return PackageType.Invalid;
+			}
+		}
+
+		public static PackageType GetPackageType(ReadOnlySpan<byte> data)
+		{
+			if (data.Length < sizeof(PackageType))
+			{
+				return PackageType.Invalid;
+			}
+
+			try
+			{
+				var type = Enum.GetUnderlyingType(typeof(PackageType));
+				object enumObj = null;
+
+				if (type == typeof(byte))
+				{
+					enumObj = data[0];
 				}
 				else if (type == typeof(short))
 				{

@@ -6,8 +6,9 @@ namespace Networking
 {
 	public sealed class ActorSyncer : MonoBehaviour
 	{
-		[SerializeField, Range(10, 20)] private int _rate;
+		[SerializeField, Range(10, 120)] private int _rate;
 		private float _elapsed;
+		private uint _tick;
 
 		private void Update()
 		{
@@ -19,8 +20,9 @@ namespace Networking
 			_elapsed += Time.deltaTime;
 			while (_elapsed > 1f / _rate)
 			{
-				combiner.Client.SendPackage(new ActorSyncPackage(transform.position, transform.rotation.eulerAngles.z), combiner.Client.ServerEndPoint);
+				combiner.Client.SendPackage(new ActorSyncPackage(transform.position, transform.rotation.eulerAngles.z, _tick), combiner.Client.ServerEndPoint);
 				_elapsed -= 1f / _rate;
+				_tick++;
 			}
 		}
 	}

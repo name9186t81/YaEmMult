@@ -11,7 +11,10 @@ namespace Networking
 	{
 		[SerializeField] private GameObject _movePrefab;
 		private Dictionary<int, GameObject> _idToGameObject;
+		private Dictionary<int, Vector2[]> _idToPositions = new Dictionary<int, Vector2[]>();
 		private ConcurrentQueue<ActorSyncFromServerPackage> _pendingPackages;
+		private long _prevTime;
+		private float _delay;
 
 		private static DebugGlobalActorSyncer _instance;
 		public static DebugGlobalActorSyncer Instance { get { return _instance; } }
@@ -35,10 +38,6 @@ namespace Networking
 		{
 			if (ServiceLocator.TryGet<ListenersCombiner>(out var combiners) && combiners.Client != null)
 			{
-				int selfID = combiners.Client.OwnID;
-
-				if (package.ID == selfID) return;
-
 				if (_idToGameObject.TryGetValue(package.ID, out GameObject obj))
 				{
 					obj.transform.position = package.Position;
@@ -59,12 +58,65 @@ namespace Networking
 		{
 			if (ServiceLocator.TryGet<ListenersCombiner>(out var combiners) && combiners.Client != null)
 			{
+				var time = combiners.Client.Time;
+				if(time - _prevTime > 2)
+				{
+					_delay = time - _prevTime;
+					_prevTime = time;
+				}
+
+				if(_idToPositions.TryGetValue(package.ID, out var poss))
+				{
+					poss[2] = poss[1];
+					poss[1] = poss[0];
+					poss[0] = package.Position;
+				}
+				else
+				{
+					_idToPositions.Add(package.ID, new Vector2[3] {package.Position, package.Position, package.Position});
+				}
+
 				int selfID = combiners.Client.OwnID;
 
-				if (package.ID == selfID) return;
+				if (package.ID == selfID)
+				{
+					DrawQuad(package.Position, Color.magenta);
+					Vector2 p3 = _idToPositions[selfID][2];
+					Vector2 p2 = _idToPositions[selfID][1];
+					Vector2 p = _idToPositions[selfID][0];
+
+					Vector2 vel = (p - p2) / (_delay * 0.01f);
+					Vector2 vel2 = (p2 - p3) / (_delay * 0.01f);
+					Vector2 ac = (vel - vel2) / (_delay * 0.01f);
+
+					DrawQuad(p + vel * (_delay * 0.01f) + 0.5f * ac * (_delay * 0.01f) * (_delay * 0.01f), Color.yellow);
+					DrawQuad(p + vel * (_delay * 0.01f), Color.green);
+					Vector2 dir = new Vector2(Mathf.Cos(package.Rotation * Mathf.Deg2Rad), Mathf.Sin(package.Rotation * Mathf.Deg2Rad));
+
+					Vector2 center = package.Position;
+					Debug.DrawLine(center, center + dir, Color.green, 0.2f);
+					return;
+				}
 
 				_pendingPackages.Enqueue(package);
 			}
+		}
+
+		private void DrawQuad(in Vector2 pos, in Color c)
+		{
+			Vector2 center = pos;
+			Vector2 up = center + Vector2.up;
+			Vector2 down = center + Vector2.down;
+			Vector2 left = center + Vector2.left;
+			Vector2 right = center + Vector2.right;
+
+			Debug.DrawLine(up, down, c, 0.2f);
+			Debug.DrawLine(left, right, c, 0.2f);
+			Debug.DrawLine(up, right, c, 0.2f);
+			Debug.DrawLine(up, left, c, 0.2f);
+			Debug.DrawLine(down, right, c, 0.2f);
+			Debug.DrawLine(down, left, c, 0.2f);
+
 		}
 	}
 }
