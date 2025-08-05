@@ -8,6 +8,7 @@ namespace Networking
 
 		[SerializeField] private long _received;
 		[SerializeField] private long _processed;
+		[SerializeField] private long _difference;
 		private ListenerBase _server;
 		private TestClient[] _clients;
 
@@ -26,6 +27,7 @@ namespace Networking
 		{
 			_received = _server.ReceivedPackages;
 			_processed = _server.ProcessedPackages;
+			_difference = _received - _processed;
 		}
 
 		private void OnDisable()

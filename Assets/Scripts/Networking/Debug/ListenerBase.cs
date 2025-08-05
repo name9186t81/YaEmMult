@@ -3,8 +3,12 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -65,6 +69,7 @@ namespace Networking
 
 		private readonly static ConcurrentDictionary<PackageType, PackageFlags> _typeToFlags;
 		private readonly static ConcurrentDictionary<PackageType, IPackageProcessor> _typeToProcessor;
+		private readonly static ConcurrentDictionary<PackageType, ProcessorAttribute> _typeToProcessorAttribte;
 
 		private readonly CancellationTokenSource _cts = new CancellationTokenSource();
 		private readonly Socket _listeningSocket;
@@ -85,7 +90,7 @@ namespace Networking
 
 		private long _tickRate;
 		private long _lastTick;
-		private Thread _tickThread;
+		private Task _tickThread;
 
 		public long ReceivedPackages => _receivedPackages;
 		public long ProcessedPackages => _processedPackages;
@@ -110,6 +115,7 @@ namespace Networking
 			}
 
 			_queueSignal = new SemaphoreSlim(0);
+			_watch = new Stopwatch();
 			_watch.Start();
 
 			_isRunning = true;
@@ -117,7 +123,50 @@ namespace Networking
 			StartListening();
 			StartProcessing();
 
-			Task.Run(() => TickingLoop(_cts.Token), _cts.Token);
+			if (tickFrequancy != -1)
+			{
+				_tickRate = tickFrequancy;
+				_tickThread = Task.Run(() => TickingLoop(_cts.Token), _cts.Token);
+			}
+
+			ActorSyncFromServerPackage test = new ActorSyncFromServerPackage(UnityEngine.Vector2.zero, 0f, 0);
+			SerializePackage(test);
+		}
+
+		static ListenerBase()
+		{
+			var processorTypes = Assembly.GetExecutingAssembly().GetTypes().Where(t => typeof(IPackageProcessor).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract);
+			var packagesTypes = Assembly.GetExecutingAssembly().GetTypes().Where(t => typeof(IPackage).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract);
+
+			foreach (var processorType in processorTypes)
+			{
+				var atr = processorType.GetCustomAttribute<ProcessorAttribute>();
+				if (atr != null)
+				{
+					try
+					{
+						var instance = Activator.CreateInstance(processorType);
+						_typeToProcessor.TryAdd(atr.ProcessedType, (IPackageProcessor)instance);
+						_typeToProcessorAttribte.TryAdd(atr.ProcessedType, atr);
+					}
+					catch (Exception ex)
+					{
+						Debug.LogException(ex);
+					}
+				}
+			}
+
+			foreach(var packageType in packagesTypes)
+			{
+				var atr = packageType.GetCustomAttribute<PackageAttribute>();
+				if (atr != null)
+				{
+					if (!_typeToFlags.TryAdd(atr.PackageType, atr.Flags))
+					{
+						Debug.LogError("Failed to add package of a type " +  atr.PackageType);
+					}
+				}
+			}
 		}
 
 		private void StartProcessing()
@@ -170,7 +219,7 @@ namespace Networking
 		private void ProcessLoop(CancellationToken ct)
 		{
 			ManualResetEventSlim reset = new ManualResetEventSlim(false);
-			int batchCount = Environment.ProcessorCount;
+			int batchCount = 64;
 			var batch = _processingPool.Rent(batchCount);
 				
 			while (_isRunning && !ct.IsCancellationRequested)
@@ -317,6 +366,17 @@ namespace Networking
 
 			package.Serialize(ref buffer, NetworkUtils.PackageHeaderSize + (package.NeedACK ? sizeof(int) : 0));
 
+			if (package.NeedCompress)
+			{
+				using MemoryStream ms = new MemoryStream();
+				using (DeflateStream compression = new DeflateStream(ms, CompressionMode.Compress))
+				{
+					compression.Write(buffer, NetworkUtils.PackageHeaderSize, buffer.Length - NetworkUtils.PackageHeaderSize);
+				}
+
+				buffer = ms.ToArray();
+			}
+
 			return buffer;
 		}
 
@@ -324,7 +384,7 @@ namespace Networking
 		{
 			if(_awaitingPackagesNextTick.Count > 0)
 			{
-				if(_awaitingPackagesNextTick.Count > 2)
+				if(_awaitingPackagesNextTick.Count > 3)
 				{
 					var batch = new List<Task>();
 					while(_awaitingPackagesNextTick.TryDequeue(out var package))
@@ -419,8 +479,9 @@ namespace Networking
 			_isRunning = false;
 			_cts.Cancel();
 
-			_listeningSocket.Dispose();
-			_cts.Dispose();
+			_listeningSocket?.Dispose();
+			_cts?.Dispose();
+			_tickThread?.Dispose();
 		}
 
 		public long RunTime => _watch.ElapsedMilliseconds;
