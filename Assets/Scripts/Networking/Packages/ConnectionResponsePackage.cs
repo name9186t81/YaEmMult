@@ -2,10 +2,10 @@
 
 namespace Networking
 {
-	[Package(PackageFlags.None, PackageType.ConnectionResponse)]
+	[Package(PackageFlags.NeedACK, PackageType.ConnectionResponse)]
 	public struct ConnectionResponsePackage : IPackage
 	{
-		public readonly PackageFlags Flags => PackageFlags.None;
+		public readonly PackageFlags Flags => PackageFlags.NeedACK;
 
 		public readonly PackageType Type => PackageType.ConnectionResponse;
 
@@ -26,6 +26,11 @@ namespace Networking
 		public readonly void Serialize(ref byte[] buffer, int offset)
 		{
 			buffer[offset] = (byte)Result;
+		}
+
+		public void Deserialize(ReadOnlySpan<byte> buffer, int offset)
+		{
+			Result = (ConnectionResponseType)buffer[offset];
 		}
 	}
 }

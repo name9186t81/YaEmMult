@@ -33,5 +33,11 @@ namespace Networking
 			SequanceNumber = BitConverter.ToInt32(buffer, offset);
 			ServerTimestamp = BitConverter.ToInt64(buffer, offset + sizeof(int));
 		}
+
+		public void Deserialize(ReadOnlySpan<byte> buffer, int offset)
+		{
+			SequanceNumber = BitConverter.ToInt32(buffer.Slice(offset));
+			ServerTimestamp = BitConverter.ToInt64(buffer.Slice(offset + sizeof(int)));
+		}
 	}
 }

@@ -37,5 +37,12 @@ namespace Networking
 			BitConverter.SingleToInt32Bits(Rotation).Convert(ref buffer, offset + sizeof(float) * 2);
 			buffer[sizeof(float) * 3 + offset] = ID;
 		}
+
+		public void Deserialize(ReadOnlySpan<byte> buffer, int offset)
+		{
+			Position = NetworkUtils.GetVector2FromBuffer(buffer, offset);
+			Rotation = BitConverter.ToSingle(buffer.Slice(offset + sizeof(float) * 2, sizeof(float)));
+			ID = buffer[offset + sizeof(float) * 3];
+		}
 	}
 }

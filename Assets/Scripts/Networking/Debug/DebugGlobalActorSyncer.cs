@@ -58,7 +58,7 @@ namespace Networking
 		{
 			if (ServiceLocator.TryGet<ListenersCombiner>(out var combiners) && combiners.Client != null)
 			{
-				var time = combiners.Client.Time;
+				var time = combiners.Client.RunTime;
 				if(time - _prevTime > 2)
 				{
 					_delay = time - _prevTime;
@@ -76,7 +76,7 @@ namespace Networking
 					_idToPositions.Add(package.ID, new Vector2[3] {package.Position, package.Position, package.Position});
 				}
 
-				int selfID = combiners.Client.OwnID;
+				int selfID = combiners.Client.ID;
 
 				if (package.ID == selfID)
 				{

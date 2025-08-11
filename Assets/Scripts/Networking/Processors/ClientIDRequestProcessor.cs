@@ -23,5 +23,19 @@ namespace Networking
 			await receiver.SendPackage(response, sender);
 			return true;
 		}
+
+		public bool Process(ReadOnlySpan<byte> data, CancellationTokenSource cts, IPEndPoint sender, ListenerBase receiver)
+		{
+			var server = receiver as DebugServer;
+
+			if (!server.TryGetUserID(sender, out byte id))
+			{
+				server.RegisterUser(sender, out id);
+			}
+
+			var response = new ClientIDPackageResponse(id);
+			receiver.SendPackage(response, ListenerBase.PackageSendOrder.Instant, ListenerBase.PackageSendDestination.Concrete, sender);
+			return true;
+		}
 	}
 }

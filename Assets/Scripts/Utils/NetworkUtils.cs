@@ -24,6 +24,11 @@ namespace Networking
 			_CRC32Table = CreateCRC32Table();
 		}
 
+		public static int GetOffset(this IPackage package)
+		{
+			if (package.NeedACK) return PackageHeaderSize + sizeof(int);
+			return PackageHeaderSize;
+		}
 		public static long GetTmeStamp(byte[] buffer)
 		{
 			return BitConverter.ToInt64(buffer, sizeof(PackageType));
@@ -48,6 +53,12 @@ namespace Networking
 		public static Vector2 GetVector2FromBuffer(byte[] buffer, int offset)
 		{
 			return new Vector2(BitConverter.ToSingle(buffer, offset), BitConverter.ToSingle(buffer, offset + sizeof(float)));
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static Vector2 GetVector2FromBuffer(ReadOnlySpan<byte> buffer, int offset)
+		{
+			return new Vector2(BitConverter.ToSingle(buffer.Slice(offset, sizeof(float))), BitConverter.ToSingle(buffer.Slice(offset + sizeof(float), sizeof(float))));
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -1,6 +1,9 @@
-﻿using System.Net;
+﻿using System;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+
+using Unity.VisualScripting;
 
 using UnityEngine;
 
@@ -24,6 +27,23 @@ namespace Networking
 			}
 
 			return Task.FromResult(true);
+		}
+
+		public bool Process(ReadOnlySpan<byte> data, CancellationTokenSource cts, IPEndPoint sender, ListenerBase receiver)
+		{
+			int usedData = NetworkUtils.PackageHeaderSize;
+
+			while (usedData < data.Length)
+			{
+				var package = new ActorSyncFromServerPackage();
+				package.Deserialize(data, usedData);
+
+				DebugGlobalActorSyncer.Instance.ReceivePackage(package);
+				Debug.Log("READ SYNC");
+				usedData += package.Size;
+			}
+
+			return true;
 		}
 	}
 }

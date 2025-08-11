@@ -38,14 +38,15 @@ namespace UI
 	
 			var data = new ConnectionData(adress, port);
 			NetworkingInfoContainer.Instance.UpdateConnectionData(ref data);
-			Listener.Create(port, true);
+			ServiceLocator.Get<ListenersCombiner>().Client = new DebugClient();
 			ConnectAsync(adress, port);
 		}
 
 		private async void ConnectAsync(IPAddress adress, int port)
 		{
-			await ServiceLocator.Get<ListenersCombiner>().Client.TryConnect(adress, port);
+			await ServiceLocator.Get<ListenersCombiner>().Client.TryToConnect(new IPEndPoint(adress, port));
 		}
+
 		private void Confirm()
 		{
 			if (!(IPAddress.TryParse(_serverIP.text, out var adress) || NetworkUtils.TryParseSpecialIP(_serverIP.text, out adress)))
@@ -62,7 +63,7 @@ namespace UI
 
 			var data = new ConnectionData(adress, port);
 			NetworkingInfoContainer.Instance.UpdateConnectionData(ref data);
-			Listener.Create(port, false);
+			ServiceLocator.Get<ListenersCombiner>().Server = new DebugServer(port, -1, -1, 20);
 		}
 	}
 }

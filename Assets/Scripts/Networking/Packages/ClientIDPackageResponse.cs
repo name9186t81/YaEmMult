@@ -1,4 +1,6 @@
-﻿namespace Networking
+﻿using System;
+
+namespace Networking
 {
 	[Package(PackageFlags.NeedACK, PackageType.ClientIDResponse)]
 	public struct ClientIDPackageResponse : IPackage
@@ -24,6 +26,11 @@
 		public readonly void Serialize(ref byte[] buffer, int offset)
 		{
 			buffer[offset] = ID;
+		}
+
+		public void Deserialize(ReadOnlySpan<byte> buffer, int offset)
+		{
+			ID = buffer[offset];	
 		}
 	}
 }

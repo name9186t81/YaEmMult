@@ -2,10 +2,10 @@
 
 namespace Networking
 {
-	[Package(PackageFlags.None, PackageType.ConnectionRequest)]
+	[Package(PackageFlags.NeedACK, PackageType.ConnectionRequest)]
 	public struct ConnectionRequestPackage : IPackage
 	{
-		public readonly PackageFlags Flags => PackageFlags.None;
+		public readonly PackageFlags Flags => PackageFlags.NeedACK;
 
 		public readonly PackageType Type => PackageType.ConnectionRequest;
 
@@ -26,6 +26,11 @@ namespace Networking
 		public readonly void Serialize(ref byte[] buffer, int offset)
 		{
 			IP.Convert(ref buffer, offset);
+		}
+
+		public void Deserialize(ReadOnlySpan<byte> buffer, int offset)
+		{
+			IP = BitConverter.ToInt64(buffer.Slice(offset, sizeof(int)));
 		}
 	}
 }

@@ -18,5 +18,14 @@ namespace Networking
 			await receiver.SendPackage(package, sender);
 			return true;
 		}
+
+		public bool Process(ReadOnlySpan<byte> data, CancellationTokenSource cts, IPEndPoint sender, ListenerBase receiver)
+		{
+			var package = new ConnectionResponsePackage(ConnectionResponseType.Success);
+			Debug.Log("SENDER: " + sender.ToString());
+			receiver.AddConnected(sender);
+			receiver.SendPackage(package, ListenerBase.PackageSendOrder.Instant, ListenerBase.PackageSendDestination.Concrete, sender);
+			return true;
+		}
 	}
 }

@@ -1,4 +1,6 @@
-﻿namespace Networking
+﻿using System;
+
+namespace Networking
 {
 	public interface IPackage
 	{
@@ -11,6 +13,7 @@
 		int Size { get; }
 
 		void Serialize(ref byte[] buffer, int offset);
+		void Deserialize(ReadOnlySpan<byte> buffer, int offset);
 		void Deserialize(ref byte[] buffer, int offset);
 
 		public bool NeedACK => (Flags & PackageFlags.NeedACK) != 0;

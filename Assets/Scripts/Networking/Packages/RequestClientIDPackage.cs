@@ -1,4 +1,6 @@
-﻿namespace Networking
+﻿using System;
+
+namespace Networking
 {
 	[Package(PackageFlags.NeedACK, PackageType.ClientIDRequest)]
 	public readonly struct RequestClientIDPackage : IPackage
@@ -11,6 +13,11 @@
 
 		public readonly void Deserialize(ref byte[] buffer, int offset)
 		{
+		}
+
+		public void Deserialize(ReadOnlySpan<byte> buffer, int offset)
+		{
+
 		}
 
 		public readonly void Serialize(ref byte[] buffer, int offset) 

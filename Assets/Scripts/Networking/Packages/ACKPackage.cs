@@ -38,5 +38,11 @@ namespace Networking
 			((byte)Result).Convert(ref buffer, offset);
 			ID.Convert(ref buffer, offset + 1);
 		}
+
+		public void Deserialize(ReadOnlySpan<byte> buffer, int offset)
+		{
+			Result = (ACKResult)buffer[offset];
+			ID = BitConverter.ToInt32(buffer.Slice(offset + 1, sizeof(int)));
+		}
 	}
 }

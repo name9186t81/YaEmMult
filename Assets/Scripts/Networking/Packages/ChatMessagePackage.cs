@@ -39,7 +39,6 @@ namespace Networking
 				Debug.LogException(ex);
 			}
 			Message += '\0';
-			Debug.Log("hello?");
 		}
 
 		public void Serialize(ref byte[] buffer, int offset)
@@ -49,6 +48,26 @@ namespace Networking
 				buffer[offset + i] = (byte)Message[i];
 			}
 			buffer[offset + Message.Length] = 0;
+		}
+
+		public void Deserialize(ReadOnlySpan<byte> buffer, int offset)
+		{
+			char c = (char)buffer[offset++];
+			Message = "";
+
+			try
+			{
+				while (c != '\0')
+				{
+					Message += c;
+					c = (char)buffer[offset++];
+				}
+			}
+			catch (Exception ex)
+			{
+				Debug.LogException(ex);
+			}
+			Message += '\0';
 		}
 	}
 }

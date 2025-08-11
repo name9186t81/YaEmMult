@@ -1,6 +1,9 @@
-﻿using System.Net;
+﻿using System;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+
+using Unity.VisualScripting;
 
 using UnityEngine;
 
@@ -16,6 +19,15 @@ namespace Networking
 
 			Debug.Log("Received Message - " + package.Message);
 			return Task.FromResult(true);
+		}
+
+		public bool Process(ReadOnlySpan<byte> data, CancellationTokenSource cts, IPEndPoint sender, ListenerBase receiver)
+		{
+			var package = new ChatMessagePackage();
+			package.Deserialize(data,  package.GetOffset());
+
+			Debug.Log("Received Message - " + package.Message);
+			return true;
 		}
 	}
 }
