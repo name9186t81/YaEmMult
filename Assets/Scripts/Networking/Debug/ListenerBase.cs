@@ -122,14 +122,16 @@ namespace Networking
 
 		private long _receivedPackages;
 		private long _processedPackages;
+		private long _ticksCount;
 
 		private long _tickRate;
 		private long _lastTick;
-		private Task _tickThread;
-		private Task _acksThread;
+		private readonly Task _tickThread;
+		private readonly Task _acksThread;
 
 		public long ReceivedPackages => _receivedPackages;
 		public long ProcessedPackages => _processedPackages;
+		public long Ticks => _ticksCount;
 
 		public const int MTU = 1400;
 		public const int MAX_ACK_TRIES = 7;
@@ -139,13 +141,14 @@ namespace Networking
 		{
 			_listeningSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
 			_listeningSocket.Bind(new IPEndPoint(IPAddress.Any, port));
-			_listeningSocket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.ReuseAddress, false);
+			_listeningSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
 			_listeningSocket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.NoDelay, true);
 			_listeningSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveTimeout, 1);
-			_listeningSocket.ReceiveBufferSize = 1;
-			_listeningSocket.SendBufferSize = 8 * 1024;
+			_listeningSocket.ReceiveBufferSize = 1024 * 1024;
+			_listeningSocket.SendBufferSize = 1024 * 1024;
 			_listeningSocket.Blocking = false;
 			_listeningSocket.DontFragment = true;
+
 			_ackID = UnityEngine.Random.Range(int.MinValue, int.MaxValue);
 
 			if (listenersCount != -1)
@@ -253,7 +256,7 @@ namespace Networking
 
 		private async Task ListenLoop(CancellationToken ct)
 		{
-			const int BUFFER_COUNT = 32;
+			const int BUFFER_COUNT = 8;
 			byte[][] buffers = new byte[BUFFER_COUNT][];
 			var tasks = new Task<SocketReceiveFromResult>[BUFFER_COUNT];
 
@@ -297,6 +300,37 @@ namespace Networking
 				}
 			}
 		}
+
+		/*
+		private async Task ListenLoop(CancellationToken ct)
+		{
+			EndPoint sender = new IPEndPoint(IPAddress.Any, 0);
+			while (_isRunning && !ct.IsCancellationRequested)
+			{
+				try
+				{
+					var buffer = ArrayPool<byte>.Shared.Rent(MTU);
+					var received = await _listeningSocket.ReceiveFromAsync(buffer, SocketFlags.None, sender);
+
+					if (received.ReceivedBytes > 0)
+					{
+						_pendingPackages.Enqueue(new ReceivedInfo() { Memory = buffer, Sender = (IPEndPoint)received.RemoteEndPoint, Received = received.ReceivedBytes });
+						_queueSignal.Release();
+
+						Interlocked.Increment(ref _receivedPackages);
+					}
+					else
+					{
+						ArrayPool<byte>.Shared.Return(buffer);
+					}
+				}
+				catch (Exception e)
+				{
+					Debug.LogError(e);
+				}
+			}
+		}
+		*/
 
 		private async Task ProcessLoop(CancellationToken ct)
 		{
@@ -439,20 +473,34 @@ namespace Networking
 
 		private async Task TickingLoop(CancellationToken ct)
 		{
+			ManualResetEventSlim reset = new ManualResetEventSlim(false);
 			Stopwatch watch = Stopwatch.StartNew();
-			long error = 0;
+
+			Thread.CurrentThread.Priority = ThreadPriority.AboveNormal;
 
 			while (!ct.IsCancellationRequested)
 			{
-				if(watch.ElapsedMilliseconds - _lastTick - error > _tickRate)
-				{
-					error = watch.ElapsedMilliseconds - _lastTick - error - _tickRate;
+				if (this is DebugServer) Debug.Log("TICKING");
 
+				if(watch.ElapsedMilliseconds - _lastTick > _tickRate)
+				{
 					_lastTick = watch.ElapsedMilliseconds;
 
-					Ticked();
-					await TickedInternal();
+					_ticksCount++;
+
+					try
+					{
+						Ticked();
+						await TickedInternal();
+					}
+					catch (Exception ex)
+					{
+						Debug.LogException(ex);
+					}
 				}
+
+				reset.Wait(TimeSpan.FromMilliseconds(10));
+				reset.Reset();
 			}
 		}
 
@@ -551,7 +599,7 @@ namespace Networking
 				}
 			}
 
-			Debug.Log("Sending raw " + package.Length.ToString() + " bytes to " + point.ToString());
+			if(this is DebugServer) Debug.Log("Sending raw " + package.Length.ToString() + " bytes to " + point.ToString() + " connected: " + _listeningSocket.Connected + " avaible: " + _listeningSocket.Available + " blocking: " + _listeningSocket.Blocking);
 			await _listeningSocket.SendToAsync(package, SocketFlags.None, point);
 		}
 
@@ -674,7 +722,14 @@ namespace Networking
 				{
 					while(_awaitingPackagesNextTick.TryDequeue(out var package))
 					{
-						await (package.Package != null ? SendPackageInternal(package.Package, package.Destination, package.Point) : SendPackageInternal(package.Data, package.Destination, package.Point, package.NeedACK));
+						try
+						{
+							await (package.Package != null ? SendPackageInternal(package.Package, package.Destination, package.Point) : SendPackageInternal(package.Data, package.Destination, package.Point, package.NeedACK));
+						}
+						catch (Exception ex)
+						{
+							Debug.LogException(ex);
+						}
 					}
 				}
 			}
@@ -788,8 +843,8 @@ namespace Networking
 			_isRunning = false;
 			_cts.Cancel();
 
-			_listeningSocket?.Dispose();
 			_cts?.Dispose();
+			_listeningSocket?.Dispose();
 			_tickThread?.Dispose();
 			_acksThread?.Dispose();
 		}

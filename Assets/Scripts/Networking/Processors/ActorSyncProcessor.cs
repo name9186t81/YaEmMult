@@ -143,7 +143,7 @@ namespace Networking
 				_changedPositions.Clear();
 			}
 
-			await listener.SendPackage(data, ListenerBase.PackageSendOrder.NextTick, ListenerBase.PackageSendDestination.Everyone);
+			await listener.SendPackage(data, ListenerBase.PackageSendOrder.Instant, ListenerBase.PackageSendDestination.Everyone);
 		}
 
 		private async Task SendData(byte[] data, bool lastMessage, Listener listener)

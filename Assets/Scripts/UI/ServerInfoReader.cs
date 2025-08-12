@@ -63,7 +63,7 @@ namespace UI
 
 			var data = new ConnectionData(adress, port);
 			NetworkingInfoContainer.Instance.UpdateConnectionData(ref data);
-			ServiceLocator.Get<ListenersCombiner>().Server = new DebugServer(port, -1, -1, 20);
+			ServiceLocator.Get<ListenersCombiner>().Server = new DebugServer(port, 1, 1, 20);
 		}
 	}
 }
