@@ -13,8 +13,6 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 
-using static UnityEditor.Progress;
-
 using Debug = UnityEngine.Debug;
 
 namespace Networking

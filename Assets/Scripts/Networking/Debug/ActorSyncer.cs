@@ -10,9 +10,12 @@ namespace Networking
 		[SerializeField] private long _serverListening;
 		[SerializeField] private long _serverProcessed;
 		[SerializeField] private long _serverTicks;
+		[SerializeField] private long _serverTime;
 		[SerializeField] private long _clientListening;
 		[SerializeField] private long _clientProcessed;
 		[SerializeField] private long _clientTicks;
+		[SerializeField] private long _clientTime;
+		[SerializeField] private long _clientTimeSynced;
 		private float _elapsed;
 		private uint _tick;
 
@@ -26,17 +29,20 @@ namespace Networking
 			_clientListening = combiner.Client.ReceivedPackages;
 			_clientProcessed = combiner.Client.ProcessedPackages;
 			_clientTicks = combiner.Client.Ticks;
+			_clientTime = combiner.Client.RunTime;
+			_clientTimeSynced = combiner.Client.RunTimeSynced;
 
 			if(combiner.Server != null)
 			{
 				_serverListening = combiner.Server.ReceivedPackages;
 				_serverProcessed = combiner.Server.ProcessedPackages;
 				_serverTicks = combiner.Server.Ticks;
+				_serverTime = combiner.Server.RunTime;
 			}
 			_elapsed += Time.deltaTime;
 			while (_elapsed > 1f / _rate)
 			{
-				combiner.Client.SendPackage(new ActorSyncPackage(transform.position, transform.rotation.eulerAngles.z, _tick));
+				combiner.Client.SendPackageToServerAsync(new ActorSyncPackage(transform.position, transform.rotation.eulerAngles.z, _tick, combiner.Client.ID));
 				_elapsed -= 1f / _rate;
 				_tick++;
 			}

@@ -52,7 +52,7 @@ namespace Networking
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static Vector2 GetVector2FromBuffer(byte[] buffer, int offset)
 		{
-			return new Vector2(BitConverter.ToSingle(buffer, offset), BitConverter.ToSingle(buffer, offset + sizeof(float)));
+			return new Vector2(BitConverter.Int32BitsToSingle(BitConverter.ToInt32(buffer, offset)), BitConverter.Int32BitsToSingle(BitConverter.ToInt32(buffer, offset + sizeof(float))));
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]

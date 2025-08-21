@@ -12,8 +12,6 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 
-using TMPro;
-
 using Debug = UnityEngine.Debug;
 
 namespace Networking
@@ -95,7 +93,7 @@ namespace Networking
 		private readonly ReaderWriterLockSlim _connectedLock = new ReaderWriterLockSlim();
 
 		private readonly ConcurrentDictionary<int, ACKInfo> _pendingACKs = new ConcurrentDictionary<int, ACKInfo>();
-		private readonly ConcurrentDictionary<int, long> _receivedACKs = new ConcurrentDictionary<int, long>();
+		private readonly ConcurrentDictionary<IPEndPoint, ConcurrentDictionary<int, long>> _receivedACKs = new ConcurrentDictionary<IPEndPoint, ConcurrentDictionary<int, long>>();
 
 		private readonly ConcurrentQueue<ReceivedInfo> _pendingPackages = new ConcurrentQueue<ReceivedInfo>();
 		private readonly ConcurrentQueue<PendingPackage> _awaitingPackagesNextTick = new ConcurrentQueue<PendingPackage>();
@@ -128,13 +126,15 @@ namespace Networking
 		private long _lastTick;
 		private readonly Task _tickThread;
 		private readonly Task _acksThread;
+		private Task[] _processors;
+		private Task[] _listeners;
 
 		public long ReceivedPackages => _receivedPackages;
 		public long ProcessedPackages => _processedPackages;
 		public long Ticks => _ticksCount;
 
 		public const int MTU = 1400;
-		public const int MAX_ACK_TRIES = 7;
+		public const int MAX_ACK_TRIES = 3;
 		public const int MAX_ACK_TIMEOUT = 5000;
 
 		public ListenerBase(int port = 0, int listenersCount = -1, int processingCount = -1, long tickFrequancy = -1)
@@ -143,7 +143,7 @@ namespace Networking
 			_listeningSocket.Bind(new IPEndPoint(IPAddress.Any, port));
 			_listeningSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
 			_listeningSocket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.NoDelay, true);
-			_listeningSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveTimeout, 1);
+			//_listeningSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveTimeout, 1);
 			_listeningSocket.ReceiveBufferSize = 1024 * 1024;
 			_listeningSocket.SendBufferSize = 1024 * 1024;
 			_listeningSocket.Blocking = false;
@@ -239,18 +239,20 @@ namespace Networking
 		private void StartProcessing()
 		{
 			Debug.Log("Starting " + _receivingThreadsCount + " processing workers");
+			_processors = new Task[_processingThreadsCount];
 			for (int i = 0; i < _processingThreadsCount; i++)
 			{
-				Task.Factory.StartNew(() => ProcessLoop(_cts.Token), _cts.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+				_processors[i] = Task.Factory.StartNew(() => ProcessLoop(_cts.Token), _cts.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 			}
 		}
 
 		private void StartListening()
 		{
 			Debug.Log("Starting " + _receivingThreadsCount + " listening workers");
+			_listeners = new Task[_receivingThreadsCount];
 			for(int i = 0; i < _receivingThreadsCount; i++)
 			{
-				Task.Factory.StartNew(() => ListenLoop(_cts.Token), _cts.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+				_listeners[i] = Task.Factory.StartNew(() => ListenLoop(_cts.Token), _cts.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 			}
 		}
 
@@ -266,7 +268,6 @@ namespace Networking
 			}
 
 			EndPoint sender = new IPEndPoint(IPAddress.Any, 0);
-			int buffer = 0;
 
 			while (_isRunning && !ct.IsCancellationRequested)
 			{
@@ -451,20 +452,24 @@ namespace Networking
 				}
 				if(_receivedACKs.Count > 0)
 				{
-					LinkedList<int> toRemove = new LinkedList<int>();
-
-					foreach (var ack in _receivedACKs)
+					foreach (var pair in _receivedACKs)
 					{
-						if(RunTime - ack.Value >  MAX_ACK_TIMEOUT * MAX_ACK_TRIES)
+						LinkedList<int> toRemove = new LinkedList<int>();
+
+						foreach (var ack in pair.Value)
 						{
-							toRemove.AddLast(ack.Key);
+							if (RunTime - ack.Value > MAX_ACK_TIMEOUT * MAX_ACK_TRIES)
+							{
+								toRemove.AddLast(ack.Key);
+							}
+						}
+
+						foreach (var ids in toRemove)
+						{
+							pair.Value.TryRemove(ids, out _);
 						}
 					}
 
-					foreach(var ids in toRemove)
-					{
-						_receivedACKs.TryRemove(ids, out _);
-					}
 				}
 				reset.Wait(TimeSpan.FromMilliseconds(10));
 				reset.Reset();
@@ -480,8 +485,6 @@ namespace Networking
 
 			while (!ct.IsCancellationRequested)
 			{
-				if (this is DebugServer) Debug.Log("TICKING");
-
 				if(watch.ElapsedMilliseconds - _lastTick > _tickRate)
 				{
 					_lastTick = watch.ElapsedMilliseconds;
@@ -516,7 +519,16 @@ namespace Networking
 				{
 					Debug.LogError("Failed to remove ACK");
 				}
-				_receivedACKs.TryAdd(package.ID, RunTime);
+				if (_receivedACKs.TryGetValue(point, out var acks))
+				{
+					acks.TryAdd(package.ID, RunTime);
+				}
+				else
+				{
+					var dict = new ConcurrentDictionary<int, long>();
+					_receivedACKs.TryAdd(point, dict);
+					dict.TryAdd(package.ID, RunTime);
+				}
 				return;
 			}
 
@@ -545,24 +557,35 @@ namespace Networking
 					}
 				}
 
-				if((flags & PackageFlags.NeedACK) != 0)
+				if ((flags & PackageFlags.NeedACK) != 0)
 				{
 					int id = BitConverter.ToInt32(buffer.Slice(NetworkUtils.PackageHeaderSize, sizeof(int)));
-					if (_receivedACKs.TryGetValue(id, out var time))
+					if (_receivedACKs.TryGetValue(point, out var acks))
 					{
-						if(RunTime - time < MAX_ACK_TRIES * MAX_ACK_TIMEOUT)
+						if (acks.TryGetValue(id, out var time))
+						{
+							if (RunTime - time < MAX_ACK_TRIES * MAX_ACK_TIMEOUT)
+							{
+								ACKPackage package = new ACKPackage(ACKPackage.ACKResult.Success, id);
+								SendPackageInternal(package, PackageSendDestination.Concrete, point);
+								Debug.Log("Dropped " + time + "/" + RunTime);
+								return;
+							}
+						}
+						else
 						{
 							ACKPackage package = new ACKPackage(ACKPackage.ACKResult.Success, id);
 							SendPackageInternal(package, PackageSendDestination.Concrete, point);
-							Debug.Log("Dropped");
-							return;
+							acks.TryAdd(id, RunTime);
 						}
 					}
 					else
 					{
 						ACKPackage package = new ACKPackage(ACKPackage.ACKResult.Success, id);
 						SendPackageInternal(package, PackageSendDestination.Concrete, point);
-						_receivedACKs.TryAdd(id, RunTime);
+						var dict = new ConcurrentDictionary<int, long>();
+						_receivedACKs.TryAdd(point, dict);
+						dict.TryAdd(id, RunTime);
 					}
 				}
 
@@ -599,7 +622,7 @@ namespace Networking
 				}
 			}
 
-			if(this is DebugServer) Debug.Log("Sending raw " + package.Length.ToString() + " bytes to " + point.ToString() + " connected: " + _listeningSocket.Connected + " avaible: " + _listeningSocket.Available + " blocking: " + _listeningSocket.Blocking);
+			Debug.Log("Sending raw " + package.Length.ToString() + " bytes to " + point.ToString() + " connected: " + _listeningSocket.Connected + " avaible: " + _listeningSocket.Available + " blocking: " + _listeningSocket.Blocking);
 			await _listeningSocket.SendToAsync(package, SocketFlags.None, point);
 		}
 
@@ -649,8 +672,9 @@ namespace Networking
 					{
 						var tasks = new List<Task>();
 						int n = 0;
-						for (; n < _connected.Count && _connected[n] != point; n++)
+						for (; n < _connected.Count; n++)
 						{
+							if (_connected[n].Equals(point)) break;
 							tasks.Add(SendPackageInternal(buffer, GetConnected(n), needACK));
 						}
 						for (int i = n + 1; i < _connected.Count; i++)
@@ -706,7 +730,6 @@ namespace Networking
 
 		private async Task TickedInternal()
 		{
-			Debug.Log("TICK :" + _awaitingPackagesNextTick.Count);
 			if(_awaitingPackagesNextTick.Count > 0)
 			{
 				if(_awaitingPackagesNextTick.Count > 3)
@@ -743,11 +766,12 @@ namespace Networking
 
 		protected virtual void LostConnection(IPEndPoint target) { }
 
-		protected void SyncTime(long time)
+		protected void SyncTime(long offset)
 		{
-			_syncedTimeDifference = time - _watch.ElapsedMilliseconds;
+			_syncedTimeDifference = offset;
 		}
 
+		public async void SendAsync(IPackage package, PackageSendOrder order, PackageSendDestination destination, IPEndPoint end = null) => await SendPackage(package, order, destination, end);
 		public async Task SendPackage(IPackage package, PackageSendOrder order, PackageSendDestination destination, IPEndPoint end = null)
 		{
 			Debug.Log("Sending package: " + package.Type + " order: " + order + " destination: " + destination + " point: " + (end != null ? end.ToString() : ""));
@@ -842,6 +866,16 @@ namespace Networking
 		{
 			_isRunning = false;
 			_cts.Cancel();
+
+			foreach (var listener in _listeners)
+			{
+				listener?.Dispose();
+			}
+
+			foreach (var processor in _processors)
+			{
+				processor?.Dispose();
+			}
 
 			_cts?.Dispose();
 			_listeningSocket?.Dispose();

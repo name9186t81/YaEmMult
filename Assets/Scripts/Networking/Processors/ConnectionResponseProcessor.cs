@@ -24,7 +24,6 @@ namespace Networking
 		{
 			var package = new ConnectionResponsePackage();
 			package.Deserialize(data, package.GetOffset());
-			Debug.Log("Р");
 
 			if (package.Result == ConnectionResponseType.Success)
 			{

@@ -104,8 +104,6 @@ namespace Networking
 			int singleSize = new ActorSyncFromServerPackage().Size;
 			int totalSize = _changedPositions.Count * singleSize;
 
-			Debug.Log("COUNT: " + _changedPositions.Count);
-
 			while (!_changedPositions.IsEmpty)
 			{
 				int size = Math.Min(ListenerBase.MTU, totalSize + NetworkUtils.PackageHeaderSize);

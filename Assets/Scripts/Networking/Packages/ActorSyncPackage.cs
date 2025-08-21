@@ -15,13 +15,15 @@ namespace Networking
 
 		public Vector2 Position;
 		public float Rotation;
-		public uint Tick; 
+		public uint Tick;
+		public int ID;
 
-		public ActorSyncPackage(Vector2 position, float rotation, uint tick)
+		public ActorSyncPackage(Vector2 position, float rotation, uint tick, int ID)
 		{
 			Position = position;
 			Rotation = rotation;
 			Tick = tick;
+			this.ID = ID;
 		}
 
 		public void Deserialize(ref byte[] buffer, int offset)
@@ -36,6 +38,7 @@ namespace Networking
 			Position.AddVector2ToBuffer(buffer, offset);
 			BitConverter.SingleToInt32Bits(Rotation).Convert(ref buffer, offset + sizeof(float) * 2);
 			Tick.Convert(ref buffer, offset + sizeof(float) * 3);
+			ID.Convert(ref buffer, offset + sizeof(float) * 3 + sizeof(int));
 		}
 
 		public void Deserialize(ReadOnlySpan<byte> buffer, int offset)
@@ -43,6 +46,7 @@ namespace Networking
 			Position = NetworkUtils.GetVector2FromBuffer(buffer, offset);
 			Rotation = BitConverter.ToSingle(buffer.Slice(sizeof(float) * 2, sizeof(float)));
 			Tick = (uint)BitConverter.ToInt32(buffer.Slice(sizeof(float) * 3, sizeof(int)));
+			ID = BitConverter.ToInt32(buffer.Slice(sizeof(float) * 3 + sizeof(int), sizeof(int)));
 		}
 	}
 }

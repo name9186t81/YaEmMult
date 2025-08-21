@@ -25,6 +25,8 @@ namespace Networking
 		private readonly Task _task;
 		private readonly Task _taskTCP;
 
+		private int _networkObjectID = 256;
+
 		private bool _running = true;
 		private bool _disposed;
 
@@ -246,6 +248,7 @@ namespace Networking
 			_connectedClients.Remove(ip);
 		}
 
+		public int NetworkObjectID => _networkObjectID++;
 		public bool Running => _running;
 	}
 }

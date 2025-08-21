@@ -15,6 +15,26 @@ public static class BitConverterNonAlloc
 		array[offset + 3] = (byte)((value >> 24) & 0xFF);
 	}
 
+	public static void Convert(this int value, ref byte[] array, int offset, int intSize = 4)
+	{
+		for (int i = 0; i < intSize && i < 4; i++)
+		{
+			array[offset + i] = (byte)((value >> (8 * i)) & 0xFF);
+		}
+	}
+
+	public static void Convert(this short value, ref byte[] array, int offset)
+	{
+		array[offset + 0] = (byte)(value & 0xFF);
+		array[offset + 1] = (byte)((value >> 8) & 0xFF);
+	}
+
+	public static void Convert(this ushort value, ref byte[] array, int offset)
+	{
+		array[offset + 0] = (byte)(value & 0xFF);
+		array[offset + 1] = (byte)((value >> 8) & 0xFF);
+	}
+
 	public static void Convert(this uint value, ref byte[] array, int offset)
 	{
 		array[offset + 0] = (byte)(value & 0xFF);

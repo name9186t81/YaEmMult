@@ -14,10 +14,17 @@
 		ServerFindResponse,
 		ServerShutdown,
 		TimeSync,
+		TimeSyncResponse,
 		ActorSync,
 		ActorSyncFromServer,
 		Ack,
 		ClientIDRequest,
 		ClientIDResponse,
+		SnapshotRequest,
+		Snapshot,
+		NetworkObjectRequest,
+		NetworkObjectSpawn,
+		NetworkObjectDestroy,
+		NetworkObjectIDAssignement
 	}
 }

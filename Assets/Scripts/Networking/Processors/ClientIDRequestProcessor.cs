@@ -34,7 +34,7 @@ namespace Networking
 			}
 
 			var response = new ClientIDPackageResponse(id);
-			receiver.SendPackage(response, ListenerBase.PackageSendOrder.Instant, ListenerBase.PackageSendDestination.Concrete, sender);
+			receiver.SendAsync(response, ListenerBase.PackageSendOrder.Instant, ListenerBase.PackageSendDestination.Concrete, sender);
 			return true;
 		}
 	}
