@@ -92,7 +92,7 @@ namespace Networking
 		public bool TryGetObjectOwner(int objectID, out byte userID) => _objectOwners.TryGetValue(objectID, out userID);
 
 		public IEnumerable<KeyValuePair<int, byte>> AllNetworkObjects => _objectOwners;
-
+		public IEnumerable<KeyValuePair<IPEndPoint, byte>> ConnectedUsers => _userIDs;
 		public int NetworkObjectID => _networkObjectID++;
 	}
 }
