@@ -72,7 +72,7 @@ namespace Networking
 			var obj = _networkPrefabs[spawnInd];
 			if (obj == default) return false;
 
-			var instance = Instantiate(obj, position, Quaternion.Euler(0, 0, rotation * Mathf.Rad2Deg));
+			var instance = Instantiate(obj, position, Quaternion.Euler(0, 0, rotation));
 
 			try
 			{
@@ -138,7 +138,7 @@ namespace Networking
 				Debug.Log("Parent has network monobehaviour");
 				flags &= ~(NetworkMonoBehaviour.SyncSettings.SyncRotation | NetworkMonoBehaviour.SyncSettings.SyncPosition);
 			}
-			byte compressedRotation = (byte)(MathUtils.NormalizeAngle(rotation) / (2 * Mathf.PI) * 255);
+			byte compressedRotation = NetworkUtils.CompressRotation(rotation);
 			Debug.Log("Sending spawning flags: " + flags + " position: " + position + " rotation: " + rotation + " original settings: " + clone.Settings);
 			combiner.Client.SendPackageToServerAsync(new NetworkObjectSpawnPackage(flags, id, ind, position, compressedRotation, customData));
 			obj = clone;

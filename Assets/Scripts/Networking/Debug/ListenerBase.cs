@@ -107,6 +107,7 @@ namespace Networking
 		private readonly CancellationTokenSource _cts = new CancellationTokenSource();
 		private readonly Socket _listeningSocket;
 		private readonly SemaphoreSlim _queueSignal;
+		private readonly SemaphoreSlim _ackIDSemaphore = new SemaphoreSlim(1, 1);
 
 		private readonly int _receivingThreadsCount = Environment.ProcessorCount / 2;
 		private readonly int _processingThreadsCount = Environment.ProcessorCount;
@@ -392,7 +393,6 @@ namespace Networking
 					_processingPool.Return(batch);
 				}
 
-				Debug.Log(_awaitingPackagesNextProcess.Count + " AWAITING");
 				if(_awaitingPackagesNextProcess.Count > 0)
 				{
 					if(_awaitingPackagesNextProcess.Count > 3)
@@ -441,6 +441,7 @@ namespace Networking
 
 							pair.Value.Tries++;
 							pair.Value.Time = RunTime;
+							Debug.Log("RESENDING PACKAGE ACK ID - " + pair.Key);
 							await SendPackageInternal(pair.Value.Data, pair.Value.Destination, false);
 						}
 					}
@@ -517,7 +518,7 @@ namespace Networking
 				package.Deserialize(buffer, NetworkUtils.PackageHeaderSize);
 				if(!_pendingACKs.TryRemove(package.ID, out _))
 				{
-					Debug.LogError("Failed to remove ACK");
+					Debug.LogError("Failed to remove ACK - " + package.ID);
 				}
 				if (_receivedACKs.TryGetValue(point, out var acks))
 				{
@@ -616,9 +617,10 @@ namespace Networking
 			if (needACK)
 			{
 				int id = BitConverter.ToInt32(package, NetworkUtils.PackageHeaderSize);
+				Debug.Log("Added " + id + " ACK");
 				if (!_pendingACKs.TryAdd(id, new ACKInfo(RunTime, point, package)))
 				{
-					Debug.LogError("Failed to add ack");
+					Debug.LogError("Failed to add ack " + id);
 				}
 			}
 
@@ -698,6 +700,7 @@ namespace Networking
 			}
 		}
 
+		private object _lockACK = new object();
 		private byte[] SerializePackage(in IPackage package)
 		{
 			int size = package.GetRealPackageSize();
@@ -709,7 +712,12 @@ namespace Networking
 			NetworkUtils.PackageTypeToByteArray(package.Type, ref buffer);
 			if (package.NeedACK)
 			{
-				Interlocked.Increment(ref _ackID).Convert(ref buffer, NetworkUtils.PackageHeaderSize);
+				//todo use Interlocked.Increment
+				lock (_lockACK)
+				{
+					_ackID++;
+					_ackID.Convert(ref buffer, NetworkUtils.PackageHeaderSize);
+				}
 			}
 
 			package.Serialize(ref buffer, NetworkUtils.PackageHeaderSize + (package.NeedACK ? sizeof(int) : 0));

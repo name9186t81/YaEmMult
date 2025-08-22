@@ -35,7 +35,7 @@ namespace Networking
 				foreach(var obj in behaviours)
 				{
 					float rotation = obj.Rotation;
-					byte compressed = (byte)((rotation % MathF.PI * 2) * 255);
+					byte compressed = NetworkUtils.CompressRotation(rotation);
 					byte[] objData = obj.GetInitData(null);
 					var flags = obj.Settings;
 					if(objData.Length == 0)
@@ -51,7 +51,7 @@ namespace Networking
 				if(NetworkManager.Instance.TryGetNetworkObject(package.NetworkID, out var behaviour))
 				{
 					float rotation = behaviour.Rotation;
-					byte compressed = (byte)((rotation % MathF.PI * 2) * 255);
+					byte compressed = NetworkUtils.CompressRotation(rotation);
 					byte[] objData = behaviour.GetInitData(null);
 					var flags = behaviour.Settings;
 					if (objData.Length == 0)

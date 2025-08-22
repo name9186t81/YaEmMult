@@ -24,6 +24,36 @@ namespace Networking
 			_CRC32Table = CreateCRC32Table();
 		}
 
+		public static byte CompressRotation(float angle)
+		{
+			while (angle < 0)
+			{
+				angle += 360;
+			}
+			while (angle > 360)
+			{
+				angle -= 360;
+			}
+
+			return (byte)((angle / 360f) * 255);
+		}
+
+		public static byte CompressRotation(Transform obj)
+		{
+			float angle = obj.rotation.eulerAngles.z;
+			return CompressRotation(angle);
+		}
+
+		/// <summary>
+		/// Returns angle in degrees.
+		/// </summary>
+		/// <param name="compressedRotation"></param>
+		/// <returns></returns>
+		public static float GetRotation(byte compressedRotation)
+		{
+			return (float)(compressedRotation / 255f * 360);
+		}
+
 		public static int GetOffset(this IPackage package)
 		{
 			if (package.NeedACK) return PackageHeaderSize + sizeof(int);

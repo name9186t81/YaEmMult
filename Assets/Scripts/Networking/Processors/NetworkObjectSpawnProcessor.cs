@@ -58,7 +58,7 @@ namespace Networking
 			if(NetworkManager.Instance != null)
 			{
 				Debug.Log("Initing object at " + package.Position + " rotation: " + package.Rotation + " flags: " + (int)package.Flags);
-				NetworkManager.Instance.TryToInit(package.SpawnID, package.ClientID, package.Position, package.Rotation * 2 * MathF.PI, package.CustomData);
+				NetworkManager.Instance.TryToInit(package.SpawnID, package.ClientID, package.Position, NetworkUtils.GetRotation(package.Rotation), package.CustomData);
 			}
 		}
 	}
