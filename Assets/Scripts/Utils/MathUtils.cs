@@ -128,13 +128,12 @@ namespace YaEm
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static float NormalizeAngle(float angle)
 		{
-			float normal = angle % (Mathf.PI * 2);
-			while(angle < 0)
+			float normal = angle;
+			if(normal < 0)
 			{
-				normal += Mathf.PI * 2;
+				normal += 2 * Mathf.PI;
 			}
-
-			return normal;
+			return normal % (2 * Mathf.PI);
 		}
 
 		public static float UniversalLerp(float start, float end, float t, LerpType type, bool clamp = true)

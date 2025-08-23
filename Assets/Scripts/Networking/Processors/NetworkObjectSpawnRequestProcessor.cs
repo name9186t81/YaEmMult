@@ -4,6 +4,8 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 
+using UnityEngine;
+
 namespace Networking
 {
 	[Processor(PackageType.NetworkObjectRequest, ProcessorAttribute.ProcessorType.Server)]
@@ -22,6 +24,12 @@ namespace Networking
 
 			if(package.NetworkID == -1)
 			{
+				if (!server.TryGetUserID(sender, out var userID))
+				{
+					Debug.LogError("Request from unknown user");
+					return false;
+				}
+
 				List<NetworkMonoBehaviour> behaviours = new List<NetworkMonoBehaviour>();
 				foreach(var obj in server.AllNetworkObjects) //todo might be a bad idea request each client to get init data instead
 				{
@@ -43,7 +51,10 @@ namespace Networking
 						flags &= ~NetworkMonoBehaviour.SyncSettings.SyncCustomData;
 					}
 
-					receiver.SendAsync(new NetworkObjectSpawnPackage(flags, obj.ID, obj.SpawnID, obj.Position, compressed, objData), ListenerBase.PackageSendOrder.NextTick, ListenerBase.PackageSendDestination.Concrete, sender);
+					receiver.SendAsync(new NetworkObjectSpawnPackage(flags, obj.ID, obj.SpawnID, obj.Position, compressed, objData)
+					{
+						Client = userID
+					}, ListenerBase.PackageSendOrder.NextTick, ListenerBase.PackageSendDestination.Concrete, sender);
 				}
 			}
 			else

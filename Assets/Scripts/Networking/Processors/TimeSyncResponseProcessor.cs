@@ -13,7 +13,7 @@ namespace Networking
 		private int _currentIteration;
 		private readonly long[] _offsets = new long[SYNC_TIME_ITERATIONS];
 
-		public const int SYNC_TIME_ITERATIONS = 1;
+		public const int SYNC_TIME_ITERATIONS = 4;
 
 		public Task<bool> Process(byte[] data, CancellationTokenSource cts, IPEndPoint sender, Listener receiver)
 		{

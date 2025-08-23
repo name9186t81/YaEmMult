@@ -24,7 +24,7 @@ namespace Networking
 		private Dictionary<NetworkMonoBehaviour, int> _behaviourToID = new Dictionary<NetworkMonoBehaviour, int>();
 		private Dictionary<int, NetworkMonoBehaviour> _pendingingObjectsForServerID = new Dictionary<int, NetworkMonoBehaviour>();
 		private Dictionary<int, NetworkMonoBehaviour> _spawnedBehaviours = new Dictionary<int, NetworkMonoBehaviour>();
-		private ConcurrentQueue<(int, int, Vector2, float, byte[])> _awaitingSpawns = new ConcurrentQueue<(int, int, Vector2, float, byte[])>();
+		private ConcurrentQueue<(int, int, Vector2, float, byte, byte[])> _awaitingSpawns = new ConcurrentQueue<(int, int, Vector2, float, byte, byte[])>();
 		private int _currentLocalID = 1;
 
 		private static NetworkManager _instance;
@@ -57,17 +57,17 @@ namespace Networking
 		{
 			while(_awaitingSpawns.TryDequeue(out var element))
 			{
-				TryToInitInternal(element.Item1, element.Item2, element.Item3, element.Item4, element.Item5);
+				TryToInitInternal(element.Item1, element.Item2, element.Item3, element.Item4, element.Item5, element.Item6);
 			}
 		}
 
-		public bool TryToInit(int spawnInd, int networkID, Vector2 position, float rotation, byte[] data)
+		public bool TryToInit(int spawnInd, int networkID, Vector2 position, float rotation, byte client, byte[] data)
 		{
-			_awaitingSpawns.Enqueue((spawnInd, networkID, position, rotation, data));
+			_awaitingSpawns.Enqueue((spawnInd, networkID, position, rotation, client, data));
 			return true;
 		}
 
-		private bool TryToInitInternal(int spawnInd, int networkID, Vector2 position, float rotation, byte[] data)
+		private bool TryToInitInternal(int spawnInd, int networkID, Vector2 position, float rotation, byte client, byte[] data)
 		{
 			var obj = _networkPrefabs[spawnInd];
 			if (obj == default) return false;
@@ -86,6 +86,7 @@ namespace Networking
 
 			_spawnedBehaviours.Add(networkID, instance);
 			instance.AssignID(networkID, true);
+			instance.SetOwnerID(client);
 			return true;
 		}
 
@@ -129,6 +130,7 @@ namespace Networking
 			clone.AssignSpawnID(ind);
 			clone.AssignID(id, false);
 			clone.SetOwner(true);
+			clone.SetOwnerID(combiner.Client.ID);
 			_pendingingObjectsForServerID.Add(id, clone);
 
 			var flags = clone.Settings;
@@ -176,6 +178,36 @@ namespace Networking
 			return _spawnedBehaviours.TryGetValue(id, out behaviour);
 		}
 
+		private void OnDestroy()
+		{
+			var combiner = ServiceLocator.Get<ListenersCombiner>();
+			if (combiner.Client != null)
+			{
+				try
+				{
+					combiner.Client.Dispose();
+				}
+				catch (Exception _) { }
+				try
+				{
+					combiner.Client.Dispose();
+				}
+				catch (Exception _) { }
+			}
+			if(combiner.Server != null)
+			{
+				try
+				{
+					combiner.Server.Dispose();
+				}
+				catch (Exception _) { }
+				try
+				{
+					combiner.Server.Dispose();
+				}
+				catch (Exception _) { }
+			}
+		}
 		private int CurrentID => _currentLocalID++;
 	}
 }

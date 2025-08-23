@@ -47,7 +47,6 @@ namespace Networking
 			{
 				var receivedPackage = new ActorSyncPackage();
 				receivedPackage.Deserialize(data, NetworkUtils.PackageHeaderSize);
-
 				if (_latestPositions.TryGetValue(sender, out var latestPosition))
 				{
 					if (latestPosition.Tick < receivedPackage.Tick)
@@ -122,7 +121,7 @@ namespace Networking
 
 					var val = _latestPositions[position];
 					(listener as DebugServer).TryGetUserID(position, out var id);
-					var package = new ActorSyncFromServerPackage(val.Position, val.Rotation, id);
+					var package = new ActorSyncFromServerPackage(val.Position, val.Rotation, val.ID);
 					package.Serialize(ref data, usedSize);
 					usedSize += singleSize;
 					_latestPositions.Remove(position, out _);

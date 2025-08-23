@@ -1,4 +1,6 @@
-﻿using System;
+﻿using Core;
+
+using System;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,7 +28,22 @@ namespace Networking
 			var package = new ChatMessagePackage();
 			package.Deserialize(data,  package.GetOffset());
 
-			Debug.Log("Received Message - " + package.Message);
+			if (receiver is DebugServer server)
+			{
+				if (!server.TryGetUserID(sender, out var id))
+				{
+					Debug.LogError("Not registered");
+					return false;
+				}
+
+				package.Client = id;
+				receiver.SendAsync(package, ListenerBase.PackageSendOrder.NextTick, ListenerBase.PackageSendDestination.Everyone, sender);
+			}
+			else
+			{
+				ServiceLocator.Get<ChatMessageListener>().AddMessage(package.Client, package.Message);
+				Debug.Log("Received Message - " + package.Message);
+			}	
 			return true;
 		}
 	}

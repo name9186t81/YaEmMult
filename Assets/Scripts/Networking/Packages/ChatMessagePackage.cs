@@ -12,17 +12,30 @@ namespace Networking
 
 		public PackageType Type => PackageType.ChatMessage;
 
-		public int Size => Message.Length + 1;
+		public int Size 
+		{ 
+			get
+			{
+				Debug.Log("SIZE: " + (Encoding.UTF8.GetByteCount(Message) + 1) + " / " + (Encoding.UTF8.GetBytes(Message).Length + 1) + " Message: "  + Message);
+				return Encoding.UTF8.GetByteCount(Message) + 1;
+			} 
+		}
 
+		public byte Client;
 		public string Message;
 
 		public ChatMessagePackage(string message)
 		{
+			Client = 0;
 			Message = message;
+
+			Debug.Log(message);
+			Debug.Log(Encoding.UTF8.GetByteCount(Message) + " " + Encoding.UTF8.GetBytes(Message).Length + " " + NetworkUtils.GetRealPackageSize(this) + " " + sizeof(int));
 		}
 
 		public void Deserialize(ref byte[] buffer, int offset)
 		{
+			Client = buffer[offset++];
 			char c = (char)buffer[offset++];
 			Message = "";
 
@@ -43,31 +56,24 @@ namespace Networking
 
 		public void Serialize(ref byte[] buffer, int offset)
 		{
-			for (int i = 0; i < Message.Length; i++)
+			buffer[offset++] = Client;
+			var code = Encoding.UTF8.GetBytes(Message);
+
+			for (int i = 0; i < code.Length; i++)
 			{
-				buffer[offset + i] = (byte)Message[i];
+				buffer[offset + i] = code[i];
 			}
-			buffer[offset + Message.Length] = 0;
 		}
 
 		public void Deserialize(ReadOnlySpan<byte> buffer, int offset)
 		{
-			char c = (char)buffer[offset++];
-			Message = "";
+			Client = buffer[offset++];
+			Message = Encoding.UTF8.GetString(buffer.Slice(offset));
 
-			try
+			for (int i = 0; i < Message.Length; i++)
 			{
-				while (c != '\0')
-				{
-					Message += c;
-					c = (char)buffer[offset++];
-				}
+				Debug.Log((byte)Message[i]);
 			}
-			catch (Exception ex)
-			{
-				Debug.LogException(ex);
-			}
-			Message += '\0';
 		}
 	}
 }

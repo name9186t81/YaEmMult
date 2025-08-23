@@ -177,10 +177,6 @@ namespace Networking
 			}
 
 			_acksThread = Task.Run(() => ACKsLoop(_cts.Token), _cts.Token);
-
-			ActorSyncFromServerPackage test = new ActorSyncFromServerPackage(UnityEngine.Vector2.zero, 0f, 0);
-			SerializePackage(test);
-
 		}
 
 		static ListenerBase()
@@ -624,7 +620,7 @@ namespace Networking
 				}
 			}
 
-			Debug.Log("Sending raw " + package.Length.ToString() + " bytes to " + point.ToString() + " connected: " + _listeningSocket.Connected + " avaible: " + _listeningSocket.Available + " blocking: " + _listeningSocket.Blocking);
+			Debug.Log("Sending raw " + package.Length + " bytes to " + point.ToString() + " connected: " + _listeningSocket.Connected + " avaible: " + _listeningSocket.Available + " blocking: " + _listeningSocket.Blocking);
 			await _listeningSocket.SendToAsync(package, SocketFlags.None, point);
 		}
 
@@ -707,7 +703,7 @@ namespace Networking
 			if (package.NeedACK) 
 				size += sizeof(int);
 
-			var buffer = ArrayPool<byte>.Shared.Rent(size);
+			var buffer = new byte[size];//todo use pools
 
 			NetworkUtils.PackageTypeToByteArray(package.Type, ref buffer);
 			if (package.NeedACK)

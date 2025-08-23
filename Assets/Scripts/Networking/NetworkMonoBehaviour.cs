@@ -29,9 +29,11 @@ namespace Networking
 		[SerializeField] private AllowedPermission _permission;
 		[SerializeField] private SyncSettings _settings = (SyncSettings)3;
 		private ConcurrentQueue<byte> _snapshotRequest = new ConcurrentQueue<byte>();
+		private ConcurrentQueue<IPackage> _pendingPackages = new ConcurrentQueue<IPackage>();
 		private ConcurrentQueue<(byte[] data, int startOffset, int size)> _pendingSnapshot = new ConcurrentQueue<(byte[] data, int startOffset, int size)>();
 		private int _netID = -1;
 		private int _spawnID = -1;
+		private byte _owner;
 		private bool _isSynced;
 		private bool _isOwner;
 		private bool _sendMessage = true;
@@ -41,7 +43,10 @@ namespace Networking
 
 		protected virtual void Start()
 		{
-			if(_netID == -1)
+			Position = transform.position;
+			Rotation = transform.eulerAngles.z;
+
+			if (_netID == -1)
 			{
 				Debug.LogError("Do not manually spawn network objects prefabs use network manager instead");
 				Destroy(gameObject);
@@ -68,9 +73,24 @@ namespace Networking
 			{
 				TryProcessSnapshot(val.data, val.startOffset, val.size);
 			}
+
+			while(_pendingPackages.TryDequeue(out var val))
+			{
+				if (!ProcessPackageInternal(val))
+				{
+					Debug.LogError("Failed to process " + val.Type + " package");
+				}
+			}
+		}
+
+		protected void SendPackageToServer(IPackage package, ListenerBase.PackageSendOrder order)
+		{
+			if(ServiceLocator.Get<ListenersCombiner>().Client != null)
+				ServiceLocator.Get<ListenersCombiner>().Client.SendPackageToServerAsync(package, ListenerBase.PackageSendOrder.Instant);
 		}
 
 		public void SetOwner(bool owner) => _isOwner = owner;
+		public void SetOwnerID(byte id) => _owner = id;
 
 		/*
 		public void Sync()
@@ -108,11 +128,18 @@ namespace Networking
 		public virtual void Init(byte[] initData) { _isSynced = true; }
 		public virtual IEnumerable<int> GetAllRequiredSystemsForSnapshot() { return Array.Empty<int>(); }
 
+		public void ApplyPackage(IPackage package)
+		{
+			_pendingPackages.Enqueue(package);
+		}
+
 		public void DestroyBehaviour(bool sendMessage)
 		{
 			_sendMessage = sendMessage;
 			Destroy(gameObject);
 		}
+
+		protected virtual bool ProcessPackageInternal(IPackage package) {  return true; }
 
 		protected virtual void OnDestroy()
 		{
@@ -218,6 +245,7 @@ namespace Networking
 
 		public bool IsOwner => _isOwner;
 		public int ID => _netID;
+		public int OwnerID => _owner;
 		public int SpawnID => _spawnID;
 		public AllowedPermission Permission => _permission;
 		public SyncSettings Settings => _settings;

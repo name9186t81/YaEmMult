@@ -12,7 +12,7 @@ namespace Networking
 		{
 			_button.onClick.AddListener(() =>
 			{
-				Vector2 randomPos = new Vector2(Random.Range(-10f, 10f), Random.Range(-10f, 10f));
+				Vector2 randomPos = new Vector2(Random.Range(-2f, 2), Random.Range(-2, 2f));
 				float randomRotation = Random.Range(0, 360);
 				NetworkManager.Instance.TryToSpawn(_prefab, randomPos, randomRotation, out var obj);
 

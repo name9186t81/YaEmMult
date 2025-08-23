@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 585b348fe47afa043898b7ba3f6e7980, type: 3}
+  m_Name: PistolDefault
+  m_EditorClassIdentifier: 
+  _key: 0
+  _projectile: {fileID: 9085685342586203571, guid: 16b6ba8729e6bae4da30eaaf7f9fb5f1, type: 3}
+  _preFireDelay: 0
+  _perProjectileDelay: 0
+  _perShotDelay: 0
+  _postFireDelay: 1
+  _projectileCountPerShot: 1
+  _angleOffsetPerShot: 0
+  _shotsCount: 1
+  _angleOffset: 0

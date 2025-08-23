@@ -38,8 +38,14 @@ namespace Networking
 				var package = new ActorSyncFromServerPackage();
 				package.Deserialize(data, usedData);
 
-				DebugGlobalActorSyncer.Instance.ReceivePackage(package);
-				Debug.Log("READ SYNC");
+				if (NetworkManager.Instance.TryGetNetworkObject(package.ID, out var obj))
+				{
+					obj.ApplyPackage(package);
+				}
+				else
+				{
+					Debug.LogWarning("Unknown id - " +  package.ID);
+				}
 				usedData += package.Size;
 			}
 

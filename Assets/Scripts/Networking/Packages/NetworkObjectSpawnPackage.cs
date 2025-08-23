@@ -12,9 +12,10 @@ namespace Networking
 
 		public readonly PackageType Type => PackageType.NetworkObjectSpawn;
 
-		public readonly int Size => sizeof(int) * 2 + sizeof(byte) + GetSize();
+		public readonly int Size => sizeof(int) * 2 + sizeof(byte) * 2 + GetSize();
 
 		public NetworkMonoBehaviour.SyncSettings SyncFlags;
+		public byte Client;
 		public int ClientID;
 		public int SpawnID;
 		public Vector2 Position;
@@ -26,6 +27,7 @@ namespace Networking
 		{
 			SyncFlags = flags;
 			ClientID = iD;
+			Client = 0;
 			SpawnID = spawnID;
 			Position = position;
 			Rotation = rotation;
@@ -36,9 +38,10 @@ namespace Networking
 		public void Deserialize(ReadOnlySpan<byte> buffer, int offset)
 		{
 			SyncFlags = (NetworkMonoBehaviour.SyncSettings)buffer[offset];
-			ClientID = BitConverter.ToInt32(buffer.Slice(offset + sizeof(byte)));
-			SpawnID = BitConverter.ToInt32(buffer.Slice(offset + sizeof(byte) + sizeof(int)));
-			int baseOffset = sizeof(byte) + sizeof(int) * 2;
+			Client = buffer[offset + 1];
+			ClientID = BitConverter.ToInt32(buffer.Slice(offset + sizeof(byte) * 2));
+			SpawnID = BitConverter.ToInt32(buffer.Slice(offset + sizeof(byte) * 2 + sizeof(int)));
+			int baseOffset = sizeof(byte) * 2 + sizeof(int) * 2;
 
 			int addOffset = 0;
 			if ((SyncFlags & NetworkMonoBehaviour.SyncSettings.SyncPosition) != 0)
@@ -74,11 +77,11 @@ namespace Networking
 		public readonly void Serialize(ref byte[] buffer, int offset)
 		{
 			buffer[offset] = (byte)SyncFlags;
-			Debug.Log("FLAGS - " + buffer[offset] + " OG FLAGS - " + SyncFlags);
-			ClientID.Convert(ref buffer, offset + sizeof(byte));
-			SpawnID.Convert(ref buffer, offset + sizeof(byte) + sizeof(int));
+			buffer[offset + 1] = Client;
+			ClientID.Convert(ref buffer, offset + sizeof(byte) * 2);
+			SpawnID.Convert(ref buffer, offset + sizeof(byte) * 2 + sizeof(int));
 			int addOffset = 0;
-			int baseOffset = sizeof(byte) + sizeof(int) * 2;
+			int baseOffset = sizeof(byte) * 2 + sizeof(int) * 2;
 
 			if ((SyncFlags & NetworkMonoBehaviour.SyncSettings.SyncPosition) != 0)
 			{

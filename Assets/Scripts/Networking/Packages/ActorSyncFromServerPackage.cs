@@ -11,7 +11,7 @@ namespace Networking
 
 		public readonly PackageType Type => PackageType.ActorSyncFromServer;
 
-		public readonly int Size => sizeof(float) * 3 + sizeof(byte);
+		public readonly int Size => sizeof(float) * 4;
 
 		public Vector2 Position;
 		public float Rotation;
@@ -28,7 +28,6 @@ namespace Networking
 		{
 			Position = NetworkUtils.GetVector2FromBuffer(buffer, offset);
 			Rotation = BitConverter.ToSingle(buffer, offset + sizeof(float) * 2);
-			ID = buffer[offset + sizeof(float) * 3];
 		}
 
 		public readonly void Serialize(ref byte[] buffer, int offset)
@@ -41,7 +40,7 @@ namespace Networking
 		public void Deserialize(ReadOnlySpan<byte> buffer, int offset)
 		{
 			Position = NetworkUtils.GetVector2FromBuffer(buffer, offset);
-			Rotation = BitConverter.ToSingle(buffer.Slice(offset + sizeof(float) * 2, sizeof(float)));
+			Rotation = BitConverter.Int32BitsToSingle(BitConverter.ToInt32(buffer.Slice(offset + sizeof(float) * 2, sizeof(float))));
 			ID = BitConverter.ToInt32(buffer.Slice(offset + sizeof(float) * 3));
 		}
 	}

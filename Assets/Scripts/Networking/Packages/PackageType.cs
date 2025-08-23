@@ -25,6 +25,7 @@
 		NetworkObjectRequest,
 		NetworkObjectSpawn,
 		NetworkObjectDestroy,
-		NetworkObjectIDAssignement
+		NetworkObjectIDAssignement,
+		ActorAction
 	}
 }
